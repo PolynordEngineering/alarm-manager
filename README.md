@@ -6,10 +6,10 @@
 
 **Turn ordinary Home Assistant entities into managed alarms with lifecycle, acknowledgement, delay, hysteresis and history.**
 
-[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Custom%20Integration-41BDF5?logo=homeassistant&logoColor=white)](https://www.home-assistant.io/)
-[![HACS](https://img.shields.io/badge/HACS-Custom%20Repository-18BC9C?logo=homeassistantcommunitystore&logoColor=white)](https://www.hacs.xyz/)
-[![License](https://img.shields.io/github/license/PolynordEngineering/alarm-manager)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/PolynordEngineering/alarm-manager?include_prereleases&label=release)](https://github.com/PolynordEngineering/alarm-manager/releases)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Custom%20Integration-blue?logo=home-assistant)](https://www.home-assistant.io/)
+[![HACS](https://img.shields.io/badge/HACS-Custom%20Repository-41BDF5?logo=home-assistant)](https://hacs.xyz/)
+[![Latest Release](https://img.shields.io/github/v/release/PolynordEngineering/alarm-manager?display_name=tag&sort=semver)](https://github.com/PolynordEngineering/alarm-manager/releases/latest)
+[![License](https://img.shields.io/github/license/PolynordEngineering/alarm-manager)](https://github.com/PolynordEngineering/alarm-manager/blob/main/LICENSE)
 
 </div>
 
