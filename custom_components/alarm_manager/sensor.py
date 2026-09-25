@@ -22,6 +22,15 @@ class AlarmHistoryEntity(SensorEntity):
     _attr_icon = "mdi:history"
     _attr_unique_id = "alarm_manager_history"
 
+    # Explicitly request:
+    #
+    # sensor.alarm_history
+    #
+    # This keeps the frontend/backend contract stable even if
+    # Home Assistant's entity naming would otherwise generate
+    # a different object ID.
+    _attr_suggested_object_id = "alarm_history"
+
     def __init__(
         self,
         hass: HomeAssistant,
@@ -59,8 +68,7 @@ class AlarmHistoryEntity(SensorEntity):
             )
         )
 
-        # Make sure the entity immediately reflects the current
-        # manager state after being added to Home Assistant.
+        # Publish the current manager state immediately.
         self.async_write_ha_state()
 
     @callback
@@ -70,9 +78,6 @@ class AlarmHistoryEntity(SensorEntity):
     ) -> None:
         """Handle an alarm or history update."""
 
-        # The dispatcher is used by the manager for both alarm
-        # lifecycle changes and history changes. The history sensor
-        # therefore needs to publish a new HA state immediately.
         self.async_write_ha_state()
 
 
@@ -90,24 +95,17 @@ async def async_setup_entry(
     manager = data["manager"]
 
     # ---------------------------------------------------------
-    # Clean up stale Alarm Manager entities from the entity
-    # registry.
+    # Clean up stale Alarm Manager alarm entities.
     #
-    # Alarm entities have unique IDs such as:
+    # Alarm entities use unique IDs:
     #
     # alarm_manager_<alarm_id>
     #
-    # When an alarm was previously deleted, the old entity
-    # could remain in Home Assistant's entity registry even
-    # though the entity itself was removed from the state
-    # machine.
+    # Alarm History has its own unique ID:
     #
-    # Keep:
-    #   - currently existing alarm entities
-    #   - Alarm History
+    # alarm_manager_history
     #
-    # Remove:
-    #   - registry entries for alarms that no longer exist
+    # History must NEVER be removed by this cleanup.
     # ---------------------------------------------------------
 
     registry = er.async_get(hass)
@@ -124,6 +122,7 @@ async def async_setup_entry(
         if registry_entry.platform != DOMAIN:
             continue
 
+        # History is a permanent entity for the integration.
         if registry_entry.unique_id == "alarm_manager_history":
             continue
 
@@ -161,7 +160,7 @@ async def async_setup_entry(
         ] = entity
 
     # ---------------------------------------------------------
-    # History entity
+    # Create the permanent Alarm History entity.
     # ---------------------------------------------------------
 
     history_entity = AlarmHistoryEntity(
@@ -178,7 +177,7 @@ async def async_setup_entry(
     )
 
     # ---------------------------------------------------------
-    # Add newly created alarm entities
+    # Add newly created alarm entities.
     # ---------------------------------------------------------
 
     def add_alarm_entity(
@@ -204,7 +203,7 @@ async def async_setup_entry(
         )
 
     # ---------------------------------------------------------
-    # Remove alarm entities
+    # Remove alarm entities.
     # ---------------------------------------------------------
 
     async def remove_alarm_entity(
@@ -220,7 +219,7 @@ async def async_setup_entry(
         if entity is None:
             return
 
-        # Save the entity_id before removing the entity.
+        # Save the entity ID before removing the entity.
         entity_id = entity.entity_id
 
         # Remove the entity from Home Assistant's state machine.
@@ -228,11 +227,11 @@ async def async_setup_entry(
             force_remove=True,
         )
 
-        # force_remove removes the entity itself, but the
-        # entity registry entry can remain. Explicitly remove
-        # that registry entry as well.
+        # Also remove the registry entry so deleted alarms
+        # do not leave stale entities behind.
         if entity_id is not None:
             registry = er.async_get(hass)
+
             registry.async_remove(
                 entity_id
             )
