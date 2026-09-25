@@ -1,0 +1,56 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Alarm Manager"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Alarm Manager",
+        "menu_options": {
+          "add_alarm": "Add Alarm",
+          "edit_alarm": "Edit Alarm",
+          "delete_alarm": "Delete Alarm"
+        }
+      },
+      "add_alarm": {
+        "title": "Add Alarm",
+        "data": {
+          "name": "Name",
+          "entity_id": "Entity",
+          "condition": "Condition",
+          "threshold": "Threshold",
+          "severity": "Severity",
+          "delay": "Activation Delay",
+          "hysteresis": "Hysteresis"
+        }
+      },
+      "edit_alarm": {
+        "title": "Edit Alarm",
+        "data": {
+          "alarm_id": "Alarm"
+        }
+      },
+      "edit_alarm_details": {
+        "title": "Edit Alarm",
+        "data": {
+          "name": "Name",
+          "entity_id": "Entity",
+          "condition": "Condition",
+          "threshold": "Threshold",
+          "severity": "Severity",
+          "delay": "Activation Delay",
+          "hysteresis": "Hysteresis"
+        }
+      }
+    },
+    "abort": {
+      "no_alarms": "No alarms are configured.",
+      "manager_not_loaded": "Alarm Manager is not loaded.",
+      "alarm_not_found": "The selected alarm could not be found."
+    }
+  }
+}

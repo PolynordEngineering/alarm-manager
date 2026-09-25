@@ -1,0 +1,117 @@
+create_alarm:
+  name: Create Alarm
+  description: Create a new alarm and start monitoring the selected Home Assistant entity.
+  fields:
+    name:
+      name: Name
+      description: A descriptive name for the alarm.
+      required: true
+      example: Living Room Temperature High
+      selector:
+        text:
+
+    entity_id:
+      name: Entity
+      description: The Home Assistant entity that should be monitored.
+      required: true
+      selector:
+        entity:
+
+    condition:
+      name: Condition
+      description: The condition that activates the alarm.
+      required: true
+      selector:
+        select:
+          options:
+            - "above"
+            - "below"
+            - "equal"
+            - "not_equal"
+            - "on"
+            - "off"
+            - "unavailable"
+
+    threshold:
+      name: Threshold
+      description: Numeric threshold used by above, below, equal and not_equal.
+      required: false
+      example: 30
+      selector:
+        number:
+          min: -100000
+          max: 100000
+          step: 0.1
+          mode: box
+
+    severity:
+      name: Severity
+      description: Alarm severity.
+      required: false
+      default: "warning"
+      selector:
+        select:
+          options:
+            - "info"
+            - "warning"
+            - "alarm"
+            - "critical"
+
+    delay:
+      name: Activation Delay
+      description: Number of seconds the condition must remain active before the alarm activates.
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 3600
+          step: 1
+          mode: box
+          unit_of_measurement: seconds
+
+    hysteresis:
+      name: Hysteresis
+      description: Hysteresis value used to prevent alarm chatter around a threshold.
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 10000
+          step: 0.1
+          mode: box
+
+
+acknowledge_alarm:
+  name: Acknowledge Alarm
+  description: Acknowledge one active alarm.
+  fields:
+    alarm_id:
+      name: Alarm ID
+      description: The unique ID of the alarm to acknowledge.
+      required: true
+      selector:
+        text:
+
+
+acknowledge_all:
+  name: Acknowledge All
+  description: Acknowledge all currently active and unacknowledged alarms.
+
+
+clear_history:
+  name: Clear Alarm History
+  description: Permanently clear all completed alarm occurrences from Alarm Manager history.
+
+
+remove_alarm:
+  name: Remove Alarm
+  description: Permanently remove an alarm and stop monitoring its entity.
+  fields:
+    alarm_id:
+      name: Alarm ID
+      description: The unique ID of the alarm to remove.
+      required: true
+      selector:
+        text:
