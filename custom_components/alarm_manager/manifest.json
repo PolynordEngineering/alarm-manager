@@ -1,7 +1,7 @@
 {
   "domain": "alarm_manager",
   "name": "Alarm Manager",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "documentation": "https://github.com/PolynordEngineering/alarm-manager",
   "issue_tracker": "https://github.com/PolynordEngineering/alarm-manager/issues",
   "codeowners": [
