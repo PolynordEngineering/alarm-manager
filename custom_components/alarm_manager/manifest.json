@@ -1,17 +1,17 @@
 {
   "domain": "alarm_manager",
   "name": "Alarm Manager",
-  "version": "0.1.7",
-  "documentation": "https://github.com/PolynordEngineering/alarm-manager",
-  "issue_tracker": "https://github.com/PolynordEngineering/alarm-manager/issues",
   "codeowners": [
     "@PolynordEngineering"
   ],
   "config_flow": true,
-  "integration_type": "service",
-  "iot_class": "local_push",
   "dependencies": [
     "http"
   ],
-  "requirements": []
+  "documentation": "https://github.com/PolynordEngineering/alarm-manager",
+  "integration_type": "service",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/PolynordEngineering/alarm-manager/issues",
+  "requirements": [],
+  "version": "0.1.7"
 }
