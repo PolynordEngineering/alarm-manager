@@ -39,6 +39,11 @@ All notable changes to Alarm Manager are documented here.
 
 ## [0.1.6] - 2026-09-25
 
+### Added
+
+- Initial HACS test release.
+- Verified HACS automatic update detection and release workflow.
+
 ### Alarm Manager v0.1.6
 
 ## [0.1.5] - 2026-09-25
