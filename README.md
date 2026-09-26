@@ -4,6 +4,8 @@
 
 ### Industrial-style alarm management for Home Assistant
 
+**Current version:** `0.1.7`
+
 **Turn ordinary Home Assistant entities into managed alarms with lifecycle, acknowledgement, delay, hysteresis and history.**
 
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Custom%20Integration-blue?logo=home-assistant)](https://www.home-assistant.io/)
@@ -191,6 +193,58 @@ For example, a high-temperature alarm can use a hysteresis value so that small f
 
 ---
 
+---
+
+# 🔔 Notifications
+
+Alarm Manager can notify operators when an alarm becomes **Active**.
+
+Notifications support:
+
+- Persistent Home Assistant notifications
+- Mobile notifications through Home Assistant `notify` services
+- Multiple named notification targets
+- Severity-based notification routing
+- Separate notification targets for different recipients or devices
+- Direct links from notifications to the Alarm Manager panel
+
+## Notification targets
+
+Notification targets are configured from:
+
+**Settings → Devices & services → Alarm Manager → Configure → Notifications**
+
+A target consists of:
+
+- **Name** — a friendly name such as `Admin`, `Engineer` or `Operator`
+- **Service** — the Home Assistant notification service to use
+
+Example:
+
+| Target | Home Assistant service |
+|---|---|
+| Admin | `notify.mobile_app_admin` |
+| Engineer | `notify.mobile_app_engineer` |
+| Operator | `notify.mobile_app_operator` |
+
+## Severity routing
+
+Notification targets can be assigned to alarm severities.
+
+For example:
+
+| Severity | Notification targets |
+|---|---|
+| Info | Admin |
+| Warning | Admin |
+| Alarm | Admin, Engineer |
+| Critical | Admin, Engineer, Operator |
+
+The actual routing is configured by the user in Alarm Manager.
+
+Persistent Home Assistant notifications remain available until dismissed, while configured mobile notification services can notify operators on their devices.
+
+
 # 🌡️ Example: high-temperature alarm
 
 Suppose you have:
@@ -294,6 +348,8 @@ The panel is designed to give you an operator-style view of:
 - Alarm duration
 - Alarm history
 - Acknowledgement actions
+- Acknowledgement user
+- Notification status
 
 The panel updates as alarm states change.
 
@@ -306,6 +362,8 @@ Completed alarm occurrences are stored in Alarm Manager history.
 History can be used to review when alarms occurred and how long the occurrence lasted.
 
 History is separate from the current alarm state, so a completed occurrence remains available even after the alarm has returned to normal.
+
+Alarm history also records the Home Assistant user who acknowledged an alarm, allowing operators to see who performed the acknowledgement.
 
 The integration also provides a **Clear Alarm History** service for permanently removing completed occurrences.
 
@@ -380,6 +438,24 @@ Alarm definitions and history are persisted by the integration, allowing them to
 
 ---
 
+---
+
+# 🆕 What's new in 0.1.7
+
+Version **0.1.7** adds the first complete notification and operator-acknowledgement workflow:
+
+- 🔔 Persistent Home Assistant alarm notifications
+- 📱 Mobile notification support through Home Assistant `notify` services
+- 👥 Multiple notification targets
+- 🚨 Severity-based notification routing
+- 👤 Home Assistant user shown for alarm acknowledgement
+- 📚 Acknowledgement user retained in alarm history
+- ⚙️ Improved notification configuration workflow
+- 🛠️ Improved Alarm Manager settings navigation
+- 💾 Fixed notification settings persistence
+- 🔄 Improved configuration-flow handling
+
+
 # 🔧 Development
 
 Repository:
@@ -414,7 +490,7 @@ Alarm Manager is actively being developed. Possible future improvements include:
 - Expanded alarm filtering
 - Improved severity visualization
 - More history analysis
-- Additional notification/automation helpers
+- Additional notification and automation helpers
 - Further HACS and Home Assistant integration polish
 
 The roadmap may change as the project evolves.

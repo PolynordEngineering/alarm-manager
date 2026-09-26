@@ -670,6 +670,14 @@ class AlarmManagerPanel extends HTMLElement {
           )}
         </div>
 
+        <div class="alarm-ack-by-cell">
+          ${
+            acknowledged
+              ? (attributes.acknowledged_by || "—")
+              : "—"
+          }
+        </div>
+
         <div class="alarm-action-cell">
 
           ${
@@ -802,6 +810,16 @@ class AlarmManagerPanel extends HTMLElement {
                     ${this._formatDateTime(
                       record.acknowledged_at
                     )}
+                  </div>
+
+                  <div class="
+                    history-ack-user
+                  ">
+                    By:
+                    ${
+                      record.acknowledged_by ||
+                      "—"
+                    }
                   </div>
                 `
               : `
@@ -1179,6 +1197,7 @@ class AlarmManagerPanel extends HTMLElement {
             115px
             85px
             155px
+            110px
             72px;
 
           gap: 10px;
@@ -1650,6 +1669,12 @@ class AlarmManagerPanel extends HTMLElement {
             );
         }
 
+        .history-ack-user {
+          margin-top: 3px;
+          font-size: 9px;
+          color: var(--secondary-text-color);
+        }
+
         .history-ack {
           font-size: 9px;
         }
@@ -1666,6 +1691,14 @@ class AlarmManagerPanel extends HTMLElement {
             var(
               --secondary-text-color
             );
+        }
+
+        .history-ack-by {
+          margin-top: 2px;
+          font-size: 9px;
+          color: var(
+            --secondary-text-color
+          );
         }
 
         .history-ack-time {
@@ -1709,6 +1742,7 @@ class AlarmManagerPanel extends HTMLElement {
               110px
               80px
               130px
+              110px
               65px;
           }
 

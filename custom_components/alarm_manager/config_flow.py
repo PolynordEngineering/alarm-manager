@@ -86,10 +86,6 @@ class AlarmManagerConfigFlow(
     ) -> OptionsFlow:
         """Return the options flow."""
 
-        # Home Assistant supplies the ConfigEntry to
-        # OptionsFlow through self.config_entry.
-        #
-        # Do not pass it to our custom constructor.
         return AlarmManagerOptionsFlow()
 
 
@@ -102,6 +98,7 @@ class AlarmManagerOptionsFlow(
         """Initialize the options flow."""
 
         self._selected_alarm_id: str | None = None
+        self._selected_notification_target: str | None = None
 
     async def async_step_init(
         self,
@@ -109,13 +106,40 @@ class AlarmManagerOptionsFlow(
     ) -> ConfigFlowResult:
         """Show the options menu."""
 
-        
         return self.async_show_menu(
             step_id="init",
             menu_options={
                 "add_alarm": "Add Alarm",
                 "edit_alarm": "Edit Alarm",
                 "delete_alarm": "Delete Alarm",
+                "notifications": "Notifications",
+            },
+        )
+
+    def _show_main_menu(self) -> ConfigFlowResult:
+        """Return to the main Alarm Manager settings menu."""
+
+        return self.async_show_menu(
+            step_id="init",
+            menu_options={
+                "add_alarm": "Add Alarm",
+                "edit_alarm": "Edit Alarm",
+                "delete_alarm": "Delete Alarm",
+                "notifications": "Notifications",
+            },
+        )
+
+    def _show_notifications_menu(self) -> ConfigFlowResult:
+        """Return to the notification settings menu."""
+
+        return self.async_show_menu(
+            step_id="notifications",
+            menu_options={
+                "default_notification": "Default Notification Service",
+                "add_notification_target": "Add Notification Target",
+                "edit_notification_target": "Edit Notification Target",
+                "delete_notification_target": "Delete Notification Target",
+                "notification_routing": "Severity Routing",
             },
         )
 
@@ -295,10 +319,7 @@ class AlarmManagerOptionsFlow(
 
             self._selected_alarm_id = None
 
-            return self.async_create_entry(
-                title="Alarm deleted",
-                data={},
-            )
+            return self._show_main_menu()
 
         schema = vol.Schema(
             {
@@ -315,6 +336,191 @@ class AlarmManagerOptionsFlow(
             step_id="confirm_delete",
             data_schema=schema,
         )
+
+    async def async_step_notifications(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Show notification configuration options."""
+
+        return self._show_notifications_menu()
+
+    async def async_step_default_notification(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Configure the default/legacy notification service."""
+
+        if user_input is not None:
+            return self._save_notification_options(
+                notification_service=user_input["notification_service"],
+            )
+
+        current_service = self.config_entry.options.get(
+            "notification_service",
+            "disabled",
+        )
+
+        services = self.hass.services.async_services().get(
+            "notify",
+            {},
+        )
+        options = [
+            selector.SelectOptionDict(
+                value="disabled",
+                label="Disabled",
+            )
+        ]
+        options.extend(
+            selector.SelectOptionDict(
+                value=service,
+                label=service,
+            )
+            for service in sorted(services)
+        )
+
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    "notification_service",
+                    default=current_service,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=options,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                )
+            }
+        )
+
+        return self.async_show_form(
+            step_id="default_notification",
+            data_schema=schema,
+        )
+
+    async def async_step_add_notification_target(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Add a named notification target."""
+        if user_input is not None:
+            name = user_input["target_name"].strip(); service = user_input["notification_service"]
+            targets = self._notification_targets()
+            if any(t.get("name", "").casefold() == name.casefold() for t in targets):
+                return self.async_show_form(step_id="add_notification_target", data_schema=self._notification_target_schema(name, service), errors={"target_name": "target_exists"})
+            if any(t.get("service") == service for t in targets):
+                return self.async_show_form(step_id="add_notification_target", data_schema=self._notification_target_schema(name, service), errors={"notification_service": "service_exists"})
+            targets.append({"name": name, "service": service})
+            return self._save_notification_options(notification_targets=targets)
+        return self.async_show_form(step_id="add_notification_target", data_schema=self._notification_target_schema())
+
+    async def async_step_edit_notification_target(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Select a notification target to edit."""
+        targets = self._notification_targets()
+        if not targets: return self.async_abort(reason="no_notification_targets")
+        if user_input is not None:
+            self._selected_notification_target = user_input["target_name"]
+            return await self.async_step_edit_notification_target_details()
+        return self.async_show_form(step_id="edit_notification_target", data_schema=self._target_select_schema(targets))
+
+    async def async_step_edit_notification_target_details(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Edit a notification target."""
+        targets = self._notification_targets(); selected = self._selected_notification_target
+        current = next((t for t in targets if t["name"] == selected), None)
+        if current is None: return self.async_abort(reason="notification_target_not_found")
+        if user_input is not None:
+            new_name = user_input["target_name"].strip(); new_service = user_input["notification_service"]
+            for target in targets:
+                if target is current: continue
+                if target.get("name", "").casefold() == new_name.casefold():
+                    return self.async_show_form(step_id="edit_notification_target_details", data_schema=self._notification_target_schema(new_name, new_service), errors={"target_name": "target_exists"})
+                if target.get("service") == new_service:
+                    return self.async_show_form(step_id="edit_notification_target_details", data_schema=self._notification_target_schema(new_name, new_service), errors={"notification_service": "service_exists"})
+            old_name=current["name"]; current["name"]=new_name; current["service"]=new_service
+            routing=self._notification_routing()
+            for severity,names in routing.items(): routing[severity]=[new_name if name==old_name else name for name in names]
+            self._selected_notification_target=None
+            return self._save_notification_options(notification_targets=targets, notification_routing=routing)
+        return self.async_show_form(step_id="edit_notification_target_details", data_schema=self._notification_target_schema(current["name"], current["service"]))
+
+    async def async_step_delete_notification_target(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Select a notification target to delete."""
+        targets=self._notification_targets()
+        if not targets: return self.async_abort(reason="no_notification_targets")
+        if user_input is not None:
+            self._selected_notification_target=user_input["target_name"]
+            return await self.async_step_confirm_delete_notification_target()
+        return self.async_show_form(step_id="delete_notification_target", data_schema=self._target_select_schema(targets))
+
+    async def async_step_confirm_delete_notification_target(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Confirm deletion of a notification target."""
+        selected=self._selected_notification_target
+        if user_input is not None:
+            if not user_input.get("confirm"): return self.async_abort(reason="delete_cancelled")
+            targets=[t for t in self._notification_targets() if t.get("name") != selected]
+            routing=self._notification_routing()
+            for severity,names in routing.items(): routing[severity]=[name for name in names if name != selected]
+            self._selected_notification_target=None
+            return self._save_notification_options(notification_targets=targets, notification_routing=routing)
+        return self.async_show_form(step_id="confirm_delete_notification_target", data_schema=vol.Schema({vol.Required("confirm", default=False): selector.BooleanSelector(selector.BooleanSelectorConfig())}))
+
+    async def async_step_notification_routing(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Configure notification targets by alarm severity."""
+        targets=self._notification_targets()
+        if not targets: return self.async_abort(reason="no_notification_targets")
+        names=[t["name"] for t in targets]; routing=self._notification_routing()
+        if user_input is not None:
+            return self._save_notification_options(notification_routing={severity:list(user_input.get(severity, [])) for severity in SEVERITIES})
+        schema=vol.Schema({vol.Required(severity, default=[name for name in routing.get(severity,names) if name in names]): selector.SelectSelector(selector.SelectSelectorConfig(options=[selector.SelectOptionDict(value=name,label=name) for name in names], multiple=True, mode=selector.SelectSelectorMode.LIST)) for severity in SEVERITIES})
+        return self.async_show_form(step_id="notification_routing", data_schema=schema)
+
+    def _notification_targets(self) -> list[dict[str, str]]:
+        """Return configured notification targets."""
+        raw=self.config_entry.options.get("notification_targets", [])
+        if not isinstance(raw,list): return []
+        return [dict(t) for t in raw if isinstance(t,dict) and t.get("name") and t.get("service")]
+
+    def _notification_routing(self) -> dict[str, list[str]]:
+        """Return configured severity routing."""
+        raw=self.config_entry.options.get("notification_routing", {})
+        if not isinstance(raw,dict): return {}
+        return {severity:list(raw.get(severity,[])) if isinstance(raw.get(severity,[]),list) else [] for severity in SEVERITIES}
+
+    def _target_select_schema(self, targets: list[dict[str, str]]) -> vol.Schema:
+        """Build a notification target selector."""
+        return vol.Schema({vol.Required("target_name"): selector.SelectSelector(selector.SelectSelectorConfig(options=[selector.SelectOptionDict(value=t["name"],label=t["name"]) for t in targets], mode=selector.SelectSelectorMode.DROPDOWN))})
+
+    def _notification_target_schema(self, name: str = "", service: str | None = None) -> vol.Schema:
+        """Build the notification target schema."""
+        services=self.hass.services.async_services().get("notify", {})
+        options=[selector.SelectOptionDict(value=s,label=s) for s in sorted(services)]
+        schema={vol.Required("target_name",default=name): selector.TextSelector(selector.TextSelectorConfig())}
+        key=vol.Required("notification_service") if service is None else vol.Required("notification_service",default=service)
+        schema[key]=selector.SelectSelector(selector.SelectSelectorConfig(options=options,mode=selector.SelectSelectorMode.DROPDOWN))
+        return vol.Schema(schema)
+
+    def _save_notification_options(
+        self,
+        notification_targets: list[dict[str, str]] | None = None,
+        notification_routing: dict[str, list[str]] | None = None,
+        notification_service: str | None = None,
+    ) -> ConfigFlowResult:
+        """Persist notification settings without discarding other options."""
+
+        options = dict(self.config_entry.options)
+
+        if notification_targets is not None:
+            options["notification_targets"] = notification_targets
+
+        if notification_routing is not None:
+            options["notification_routing"] = notification_routing
+
+        if notification_service is not None:
+            options["notification_service"] = notification_service
+
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            options=options,
+        )
+
+        return self._show_notifications_menu()
 
     async def async_step_edit_details(
         self,
@@ -380,10 +586,7 @@ class AlarmManagerOptionsFlow(
                     reason="alarm_not_found"
                 )
 
-            return self.async_create_entry(
-                title="Alarm updated",
-                data={},
-            )
+            return self._show_main_menu()
 
         schema = self._alarm_schema(
             alarm=alarm
@@ -598,10 +801,7 @@ class AlarmManagerOptionsFlow(
             config
         )
 
-        return self.async_create_entry(
-            title="Alarm created",
-            data={},
-        )
+        return self._show_main_menu()
 
     def _get_manager(self):
         """Return the active Alarm Manager."""

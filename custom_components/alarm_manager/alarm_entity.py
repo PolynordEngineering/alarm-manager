@@ -64,6 +64,7 @@ class AlarmEntity(SensorEntity):
                 if self.alarm.acknowledged_at
                 else None
             ),
+            "acknowledged_by": self.alarm.acknowledged_by,
             "cleared_at": (
                 self.alarm.cleared_at.isoformat()
                 if self.alarm.cleared_at

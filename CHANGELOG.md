@@ -2,6 +2,41 @@
 
 All notable changes to Alarm Manager are documented here.
 
+## [0.1.7] - 2026-09-26
+
+### Added
+
+- Added persistent Home Assistant notifications when an alarm becomes active.
+- Added mobile notification support through Home Assistant `notify` services.
+- Added support for multiple named notification targets.
+- Added severity-based notification routing.
+- Added notification target configuration through the Alarm Manager settings.
+- Added notification target add, edit and delete functionality.
+- Added Home Assistant user identification for alarm acknowledgements.
+- Added acknowledgement user information to current alarms.
+- Added acknowledgement user information to alarm history.
+- Added acknowledgement user tracking for **Acknowledge All**.
+- Added direct links from notifications to the Alarm Manager panel.
+
+### Improved
+
+- Improved the Alarm Manager configuration flow navigation.
+- Improved the Notifications settings workflow.
+- Notification configuration now remains within the relevant settings menu after saving.
+- Improved alarm acknowledgement handling.
+- Improved alarm history acknowledgement information.
+- Improved notification routing configuration.
+- Improved overall integration settings usability.
+
+### Fixed
+
+- Fixed notification settings not persisting correctly.
+- Fixed notification targets being lost when leaving the configuration flow.
+- Fixed configuration flow steps unintentionally overwriting existing notification options.
+- Fixed acknowledgement information not being retained correctly in alarm history.
+
+---
+
 ## [0.1.6] - 2026-09-25
 
 ### Alarm Manager v0.1.6
