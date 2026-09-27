@@ -1,516 +1,380 @@
-<div align="center">
-
 # 🚨 Alarm Manager
 
-### Industrial-style alarm management for Home Assistant
+**Industrial-style alarm management for Home Assistant.**
 
-**Current version:** `0.1.7`
+Turn ordinary Home Assistant entities into a proper alarm system with **severity levels, acknowledgement, alarm history, activation delays, hysteresis and persistent notifications**.
 
-**Turn ordinary Home Assistant entities into managed alarms with lifecycle, acknowledgement, delay, hysteresis and history.**
+> Built for Home Assistant users who want an alarm workflow closer to the way alarms are handled in PLC/SCADA systems.
 
-[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Custom%20Integration-blue?logo=home-assistant)](https://www.home-assistant.io/)
-[![HACS](https://img.shields.io/badge/HACS-Custom%20Repository-41BDF5?logo=home-assistant)](https://hacs.xyz/)
-[![Latest Release](https://img.shields.io/github/v/release/PolynordEngineering/alarm-manager?display_name=tag&sort=semver)](https://github.com/PolynordEngineering/alarm-manager/releases/latest)
-[![License](https://img.shields.io/github/license/PolynordEngineering/alarm-manager)](https://github.com/PolynordEngineering/alarm-manager/blob/main/LICENSE)
+![Alarm Manager panel](docs/images/alarm-panel.png)
 
-</div>
+## Why Alarm Manager?
 
----
+Home Assistant is excellent at automation. Alarm Manager adds a dedicated layer for situations where an event should be treated as an **alarm**, not just another sensor state.
 
-## What is Alarm Manager?
+### Key features
 
-**Alarm Manager** adds an industrial PLC/SCADA-style alarm layer to Home Assistant.
-
-A Home Assistant sensor normally tells you what is happening **right now**. Alarm Manager adds the concept of an **alarm occurrence**: when a condition becomes abnormal, the alarm can activate, be acknowledged, remain visible after the condition clears, and finally return to normal. Completed occurrences are retained in alarm history.
-
-This is useful for things such as:
-
-- 🌡️ High or low temperatures
-- ⚡ Electrical or energy conditions
-- 🔌 Equipment and switch states
-- 🌐 Availability / connectivity monitoring
-- 🏠 Home automation faults
-- 🏭 PLC, industrial and workshop monitoring
-- 🚢 Marine and technical systems
-
-> **Think of it as an alarm-management layer between your Home Assistant entities and the operator.**
-
----
-
-## ✨ Features
-
-| Feature | Description |
+| Feature | What it does |
 |---|---|
-| **Alarm lifecycle** | Normal → Active → Acknowledged → Inactive → Normal |
-| **Acknowledgement** | Acknowledge individual alarms or all active alarms |
-| **Alarm history** | Keep completed alarm occurrences with timestamps and duration |
-| **Activation delay** | Require a condition to remain abnormal before activating |
-| **Hysteresis** | Reduce alarm chatter around numeric thresholds |
-| **Severity** | Info, Warning, Alarm and Critical |
-| **Multiple conditions** | Above, Below, Equal, Not equal, On, Off and Unavailable |
-| **UI configuration** | Add, edit and delete alarms from Home Assistant |
-| **Dedicated panel** | View current alarms and history in the Alarm Manager panel |
-| **Persistent configuration** | Alarm definitions and history survive restarts |
-| **Entity cleanup** | Removed alarms are cleaned from the Home Assistant entity registry |
-| **Services** | Create, acknowledge, clear history and remove alarms programmatically |
+| 🚦 **4 severity levels** | Info, Warning, Alarm and Critical |
+| 🔔 **Alarm lifecycle** | Active → Acknowledged → Cleared → History |
+| 👤 **Acknowledgement tracking** | Records who acknowledged an alarm |
+| 🗂️ **Alarm history** | Keeps completed alarm occurrences and durations |
+| ⏱️ **Activation delay** | Avoid nuisance alarms from short-lived conditions |
+| ↔️ **Hysteresis** | Prevents alarms from repeatedly triggering around a limit |
+| 📱 **Persistent notifications** | Send alarms to Home Assistant mobile devices |
+| 👥 **Multiple notification targets** | Route alarms to different operators/devices |
+| 🎯 **Severity routing** | Decide who receives Info/Warning/Alarm/Critical notifications |
+| 🔗 **Direct notification links** | Jump directly from a notification to Alarm Manager |
+| ⚙️ **UI configuration** | Create and manage alarms without YAML |
 
 ---
 
-# 🚀 Installation
+## See it in action
 
-## HACS — Custom Repository
+### Alarm overview
 
-Alarm Manager is currently distributed as a **HACS custom repository**.
+The dedicated Alarm Manager panel gives you a quick operational view of current alarms, severity, state, duration and acknowledgement.
 
-### 1. Add the repository
+![Alarm Manager overview](docs/images/alarm-panel.png)
 
-In Home Assistant:
+It also keeps completed occurrences in **Alarm History**, including activation time, clear time, duration and acknowledgement information.
 
-**HACS → Integrations → ⋮ → Custom repositories**
+---
 
-Add:
+## Create an alarm
+
+Alarms are configured directly through Home Assistant.
+
+![Add Alarm](docs/images/add-alarm.png)
+
+A typical alarm defines:
+
+- **Name**
+- **Entity**
+- **Condition**
+- **Threshold**
+- **Severity**
+- **Activation delay**
+- **Hysteresis**
+
+For example:
+
+> **TEST TEMPERATURE PLC**  
+> Trigger when `sensor.gt1_temperature` is **above 25°C** for 30 seconds.  
+> Severity: **Warning**
+
+This makes it possible to turn existing Home Assistant sensors, binary sensors and other entities into managed alarms.
+
+---
+
+## Alarm lifecycle
+
+Alarm Manager treats each alarm as an occurrence with a lifecycle:
+
+```text
+NORMAL
+  │
+  │ condition becomes true
+  ▼
+ACTIVE
+  │
+  ├── ACKNOWLEDGED
+  │
+  │ condition clears
+  ▼
+CLEARED
+  │
+  ▼
+HISTORY
+```
+
+An alarm can remain **active after acknowledgement**. Acknowledgement means an operator has seen the alarm — it does not mean the underlying problem has disappeared.
+
+This distinction is especially useful for PLC, HVAC, energy and industrial automation projects.
+
+---
+
+## Notifications
+
+Version **0.1.7** adds a full notification workflow.
+
+![Notification settings](docs/images/notification-settings.png)
+
+Configure:
+
+- A default Home Assistant notification service
+- Multiple named notification targets
+- Target-specific notification services
+- Severity-based routing
+
+### Add notification targets
+
+![Add notification target](docs/images/notification-target.png)
+
+For example:
+
+```text
+Operator
+Maintenance
+Duty Engineer
+Mobile
+```
+
+Each target can use its own Home Assistant notification service.
+
+### Route by severity
+
+![Severity routing](docs/images/severity-routing.png)
+
+You can decide which targets receive each severity:
+
+```text
+INFO      → Operator
+WARNING   → Operator + Maintenance
+ALARM     → Operator + Maintenance
+CRITICAL  → Operator + Duty Engineer
+```
+
+The routing is configurable from Home Assistant.
+
+### Mobile notifications
+
+When an alarm is triggered, Alarm Manager can send a persistent Home Assistant notification containing the alarm details and a direct link back to Alarm Manager.
+
+![Mobile alarm notification](docs/images/mobile-notification.png)
+
+Example information includes:
+
+- Alarm name
+- Active state
+- Current value
+- Condition
+- Limit
+- Severity
+- Link to Alarm Manager
+
+---
+
+## Acknowledgement
+
+Acknowledgement is designed for operator workflows.
+
+When an operator acknowledges an alarm, Alarm Manager records the acknowledgement and the Home Assistant user associated with it.
+
+The panel can show:
+
+- ✓ ACK
+- Acknowledgement time
+- Acknowledged by
+- Current alarm state
+
+This is useful when several people can operate the same Home Assistant installation.
+
+---
+
+## Alarm history
+
+Every completed alarm occurrence can remain available in history.
+
+History can include:
+
+- Alarm
+- Trigger value
+- Duration
+- Activation time
+- Clear time
+- Acknowledgement
+- Acknowledgement time
+- User who acknowledged the alarm
+
+This gives you a simple event history without having to build your own alarm database.
+
+---
+
+## Installation
+
+### HACS
+
+Alarm Manager is available as a HACS custom integration.
+
+Until it is available through the normal HACS search, add the repository as a **Custom repository**:
+
+1. Open **HACS**
+2. Go to **Integrations**
+3. Open the menu in the top-right
+4. Select **Custom repositories**
+5. Add:
 
 ```text
 https://github.com/PolynordEngineering/alarm-manager
 ```
 
-Set the type to:
+6. Select **Integration**
+7. Install **Alarm Manager**
+8. Restart Home Assistant
 
-```text
-Integration
-```
-
-### 2. Download Alarm Manager
-
-Find **Alarm Manager** in HACS and select **Download**.
-
-### 3. Restart Home Assistant
-
-Restart Home Assistant after the download has completed.
-
-### 4. Add the integration
-
-Go to:
+Then open:
 
 **Settings → Devices & services → Add Integration → Alarm Manager**
 
-Complete the setup flow.
-
-No YAML configuration is required.
+> HACS default-repository inclusion is handled separately from the integration itself.
 
 ---
 
-# 🛠️ Creating your first alarm
+## First alarm
 
-Once Alarm Manager is installed:
+After installation:
 
-**Settings → Devices & services → Alarm Manager → Configure**
+1. Open **Settings → Devices & services**
+2. Open **Alarm Manager**
+3. Select **Add service**
+4. Select **Alarm Manager**
+5. Choose **Add Alarm**
+6. Configure the alarm
+7. Submit
 
-Choose:
+![Alarm Manager configuration menu](docs/images/alarm-menu.png)
 
-**Add Alarm**
+Your alarm will then be evaluated automatically from the selected Home Assistant entity.
 
-You will be asked for the alarm configuration.
+---
 
-## Alarm fields
+## Example
 
-### Name
+### High temperature alarm
 
-The name operators will see for the alarm.
-
-Example:
-
-```text
-Boiler Return Temperature High
-```
-
-### Entity
-
-The Home Assistant entity that should be monitored.
-
-For example:
+Suppose a PLC exposes a temperature sensor:
 
 ```text
-sensor.boiler_return_temperature
+sensor.gt1_temperature
 ```
 
-### Condition
+You could configure:
 
-Defines when the entity is considered abnormal.
+```text
+Name:             PLC High Temperature
+Entity:           sensor.gt1_temperature
+Condition:        Above
+Threshold:        80
+Severity:         Alarm
+Activation delay: 30 seconds
+Hysteresis:       2
+```
 
-Available conditions:
+The alarm activates when the temperature remains above the threshold for the configured delay.
 
-| Condition | Meaning |
+With hysteresis enabled, the alarm does not immediately reset when the value moves only slightly below the limit.
+
+---
+
+## Severity levels
+
+Alarm Manager supports four severity levels:
+
+| Severity | Typical use |
 |---|---|
-| **Above** | Value is above the threshold |
-| **Below** | Value is below the threshold |
-| **Equal** | Value equals the threshold |
-| **Not equal** | Value does not equal the threshold |
-| **On** | Entity is in the `on` state |
-| **Off** | Entity is in the `off` state |
-| **Unavailable** | Entity is unavailable |
+| 🔵 **Info** | Information or operator notification |
+| 🟡 **Warning** | Condition requiring attention |
+| 🟠 **Alarm** | Abnormal condition requiring action |
+| 🔴 **Critical** | High-priority condition requiring immediate attention |
 
-Numeric conditions use the **Threshold** field.
-
-### Threshold
-
-The numeric value used by **Above**, **Below**, **Equal** and **Not equal**.
-
-Example:
-
-```text
-60
-```
-
-### Severity
-
-Choose the severity shown for the alarm:
-
-- **Info**
-- **Warning**
-- **Alarm**
-- **Critical**
-
-Severity is metadata for the alarm and can be used by the frontend or future automations to distinguish importance.
-
-### Activation Delay
-
-The number of seconds the abnormal condition must remain active before the alarm becomes **Active**.
-
-Example:
-
-```text
-30 seconds
-```
-
-This is useful when a sensor may briefly cross a limit and return to normal.
-
-### Hysteresis
-
-Hysteresis helps prevent an alarm from repeatedly switching state when a value moves around a threshold.
-
-For example, a high-temperature alarm can use a hysteresis value so that small fluctuations around the limit do not cause unnecessary alarm chatter.
+The exact operational meaning is up to your installation and alarm philosophy.
 
 ---
 
----
+## Supported alarm concepts
 
-# 🔔 Notifications
+Alarm Manager is designed around concepts familiar from industrial alarm systems:
 
-Alarm Manager can notify operators when an alarm becomes **Active**.
-
-Notifications support:
-
-- Persistent Home Assistant notifications
-- Mobile notifications through Home Assistant `notify` services
-- Multiple named notification targets
-- Severity-based notification routing
-- Separate notification targets for different recipients or devices
-- Direct links from notifications to the Alarm Manager panel
-
-## Notification targets
-
-Notification targets are configured from:
-
-**Settings → Devices & services → Alarm Manager → Configure → Notifications**
-
-A target consists of:
-
-- **Name** — a friendly name such as `Admin`, `Engineer` or `Operator`
-- **Service** — the Home Assistant notification service to use
-
-Example:
-
-| Target | Home Assistant service |
-|---|---|
-| Admin | `notify.mobile_app_admin` |
-| Engineer | `notify.mobile_app_engineer` |
-| Operator | `notify.mobile_app_operator` |
-
-## Severity routing
-
-Notification targets can be assigned to alarm severities.
-
-For example:
-
-| Severity | Notification targets |
-|---|---|
-| Info | Admin |
-| Warning | Admin |
-| Alarm | Admin, Engineer |
-| Critical | Admin, Engineer, Operator |
-
-The actual routing is configured by the user in Alarm Manager.
-
-Persistent Home Assistant notifications remain available until dismissed, while configured mobile notification services can notify operators on their devices.
-
-
-# 🌡️ Example: high-temperature alarm
-
-Suppose you have:
-
-```text
-Entity:      sensor.boiler_return_temperature
-Condition:   Above
-Threshold:   60 °C
-Severity:    Alarm
-Delay:       30 seconds
-Hysteresis: 1 °C
-```
-
-The behavior is:
-
-```text
-Temperature normal
-        │
-        │ rises above limit
-        ▼
-  Delay starts
-        │
-        │ remains abnormal for 30 s
-        ▼
-     🔴 ACTIVE
-        │
-        │ operator acknowledges
-        ▼
-  🟠 ACKNOWLEDGED
-        │
-        │ temperature returns to normal
-        ▼
-     🟢 NORMAL
-```
-
-If the condition clears **before the activation delay expires**, the alarm does not become active.
-
----
-
-# 🔄 Alarm lifecycle
-
-Alarm Manager uses four primary states.
-
-```text
-                         Condition abnormal
-                                │
-                                ▼
-                         ┌─────────────┐
-                         │    ACTIVE   │
-                         └──────┬──────┘
-                                │
-                           Acknowledge
-                                │
-                                ▼
-                     ┌──────────────────┐
-                     │  ACKNOWLEDGED    │
-                     └────────┬─────────┘
-                              │
-                       Condition clears
-                              │
-                              ▼
-                         ┌──────────┐
-                         │  NORMAL  │
-                         └──────────┘
-```
-
-There is also an **Inactive** state for alarms that have cleared but still require acknowledgement:
-
-```text
-ACTIVE
-  │
-  │ condition clears
-  ▼
-INACTIVE
-  │
-  │ acknowledge
-  ▼
-NORMAL
-```
-
-### What happens if the alarm returns?
-
-If an **Inactive** alarm becomes abnormal again, Alarm Manager starts a **new occurrence**.
-
-The new occurrence gets its own activation time and trigger information, while the previous occurrence remains in history.
-
-This allows repeated alarm events to be treated as separate occurrences rather than one endlessly changing alarm.
-
----
-
-# 🖥️ Alarm Manager panel
-
-When the integration is loaded, Alarm Manager provides a dedicated panel in the Home Assistant sidebar.
-
-The panel is designed to give you an operator-style view of:
-
-- Current **Active** alarms
-- **Acknowledged** alarms
-- **Inactive** alarms awaiting acknowledgement
-- Alarm severity
-- Alarm duration
+- Alarm occurrence
+- Active state
+- Acknowledgement
+- Clear/reset
+- Severity
+- Activation delay
+- Hysteresis
 - Alarm history
-- Acknowledgement actions
-- Acknowledgement user
-- Notification status
+- Operator identification
+- Notification routing
 
-The panel updates as alarm states change.
+It can be used with Home Assistant entities coming from:
 
----
-
-# 📚 Alarm history
-
-Completed alarm occurrences are stored in Alarm Manager history.
-
-History can be used to review when alarms occurred and how long the occurrence lasted.
-
-History is separate from the current alarm state, so a completed occurrence remains available even after the alarm has returned to normal.
-
-Alarm history also records the Home Assistant user who acknowledged an alarm, allowing operators to see who performed the acknowledgement.
-
-The integration also provides a **Clear Alarm History** service for permanently removing completed occurrences.
+- PLCs
+- Modbus devices
+- MQTT
+- ESPHome
+- Shelly
+- Zigbee
+- Modbus TCP
+- Other Home Assistant integrations
 
 ---
 
-# ⚙️ Services
+## Services
 
-Alarm Manager exposes the following Home Assistant services.
+Alarm Manager also provides Home Assistant services for automation and integration with other workflows.
 
-| Service | Purpose |
-|---|---|
-| `alarm_manager.create_alarm` | Create and start monitoring a new alarm |
-| `alarm_manager.acknowledge_alarm` | Acknowledge one alarm |
-| `alarm_manager.acknowledge_all` | Acknowledge all currently active, unacknowledged alarms |
-| `alarm_manager.clear_history` | Permanently clear completed alarm history |
-| `alarm_manager.remove_alarm` | Permanently remove an alarm and stop monitoring it |
-
-These services make Alarm Manager usable from automations, scripts and other Home Assistant workflows.
-
-For the exact service fields and selectors, see `custom_components/alarm_manager/services.yaml`.
+This makes it possible to create or acknowledge alarms from automations, scripts and other Home Assistant logic.
 
 ---
 
-# 🧩 Example automation concept
+## Screenshots
 
-Because Alarm Manager exposes standard Home Assistant services, an automation can create or acknowledge alarms as part of a larger workflow.
+### Main alarm panel
+![Main alarm panel](docs/images/alarm-panel.png)
 
-For example, a future workflow could:
+### Alarm configuration
+![Alarm configuration](docs/images/add-alarm.png)
 
-```text
-Sensor / PLC condition
-        ↓
-Home Assistant automation
-        ↓
-alarm_manager.create_alarm
-        ↓
-Alarm Manager
-        ↓
-Operator acknowledgement
-```
+### Notification configuration
+![Notification configuration](docs/images/notification-settings.png)
 
-The integration itself does not require YAML configuration for normal setup.
+### Notification target
+![Notification target](docs/images/notification-target.png)
 
----
+### Severity routing
+![Severity routing](docs/images/severity-routing.png)
 
-# 🏗️ Architecture
-
-Alarm Manager is built as a native Home Assistant custom integration.
-
-```text
-Home Assistant entity
-        │
-        ▼
-   Entity Monitor
-        │
-        ▼
-   Alarm Condition
-        │
-        ▼
-    Alarm Manager
-        │
-   ┌────┴───────────────┐
-   ▼                    ▼
-Alarm Entity       Alarm History
-   │                    │
-   └────────┬───────────┘
-            ▼
-     Alarm Manager Panel
-```
-
-Alarm definitions and history are persisted by the integration, allowing them to survive Home Assistant restarts.
+### Mobile notification
+![Mobile notification](docs/images/mobile-notification.png)
 
 ---
 
+## Roadmap
+
+Alarm Manager is actively being developed.
+
+Planned and experimental areas may include:
+
+- Additional alarm conditions
+- More advanced alarm handling
+- UI improvements
+- Additional notification capabilities
+- Further SCADA/industrial-style features
+
+Suggestions and practical use cases are welcome.
+
 ---
 
-# 🆕 What's new in 0.1.7
+## Contributing
 
-Version **0.1.7** adds the first complete notification and operator-acknowledgement workflow:
+Found a bug? Have an idea?
 
-- 🔔 Persistent Home Assistant alarm notifications
-- 📱 Mobile notification support through Home Assistant `notify` services
-- 👥 Multiple notification targets
-- 🚨 Severity-based notification routing
-- 👤 Home Assistant user shown for alarm acknowledgement
-- 📚 Acknowledgement user retained in alarm history
-- ⚙️ Improved notification configuration workflow
-- 🛠️ Improved Alarm Manager settings navigation
-- 💾 Fixed notification settings persistence
-- 🔄 Improved configuration-flow handling
-
-
-# 🔧 Development
-
-Repository:
-
-**https://github.com/PolynordEngineering/alarm-manager**
-
-The integration lives under:
-
-```text
-custom_components/alarm_manager/
-```
-
-The repository also contains:
-
-```text
-frontend/       Alarm Manager panel
-translations/   Home Assistant translations
-brand/          Integration branding
-```
-
-Issues and feature requests:
+Please open an issue:
 
 **https://github.com/PolynordEngineering/alarm-manager/issues**
 
----
+Pull requests are also welcome.
 
-# 🗺️ Roadmap
-
-Alarm Manager is actively being developed. Possible future improvements include:
-
-- More operator controls
-- Expanded alarm filtering
-- Improved severity visualization
-- More history analysis
-- Additional notification and automation helpers
-- Further HACS and Home Assistant integration polish
-
-The roadmap may change as the project evolves.
+If you are using Alarm Manager in a real Home Assistant, PLC or automation project, feedback is especially useful.
 
 ---
 
-# 📄 License
+## About
 
-Alarm Manager is released under the **MIT License**.
+**Alarm Manager** is developed by **Polynord Engineering**.
 
-Copyright © 2026 **Polynord Engineering**.
+Built with Home Assistant for people who want more than a simple notification when something goes wrong.
 
----
-
-<div align="center">
-
-**Alarm Manager**
-
-*Industrial alarm management for Home Assistant.*
-
-Built by **Polynord Engineering**
-
-</div>
+⭐ If you find the project useful, consider starring the repository and sharing your feedback.
