@@ -181,7 +181,8 @@ async def _handle_acknowledge_alarm(
 
     success = (
         await manager.async_acknowledge_alarm(
-            alarm_id
+            alarm_id,
+            user_id=call.context.user_id,
         )
     )
 
@@ -204,7 +205,9 @@ async def _handle_acknowledge_all(
             "Alarm Manager is not loaded."
         )
 
-    await manager.async_acknowledge_all()
+    await manager.async_acknowledge_all(
+        user_id=call.context.user_id,
+    )
 
 
 async def _handle_clear_history(

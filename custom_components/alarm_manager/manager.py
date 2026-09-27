@@ -145,6 +145,102 @@ class AlarmManager:
         # Legacy signal identifier used by earlier versions.
         self._notify_alarm_updated("__history__")
 
+    def _get_notification_targets(
+        self,
+        severity: str,
+    ) -> list[tuple[str, str]]:
+        """Return notification targets configured for a severity."""
+
+        for entry in self.hass.config_entries.async_entries(DOMAIN):
+            options = entry.options
+            raw_targets = options.get("notification_targets", [])
+            targets: dict[str, str] = {}
+
+            if isinstance(raw_targets, list):
+                for target in raw_targets:
+                    if not isinstance(target, dict):
+                        continue
+                    name = str(target.get("name", "")).strip()
+                    service = str(target.get("service", "")).strip()
+                    if name and service:
+                        targets[name] = service
+
+            if targets:
+                raw_routing = options.get("notification_routing", {})
+                selected_names = raw_routing.get(severity, []) if isinstance(raw_routing, dict) else []
+                if not isinstance(selected_names, list):
+                    selected_names = []
+                if not raw_routing:
+                    selected_names = list(targets)
+                return [(name, targets[name]) for name in selected_names if name in targets]
+
+            service = options.get("notification_service", "disabled")
+            if service and service != "disabled":
+                return [("Legacy", str(service))]
+
+        return []
+
+    async def _create_alarm_notification(
+        self,
+        alarm: Alarm,
+    ) -> None:
+        """Create a persistent Home Assistant notification."""
+
+        if not self.hass.services.has_service(
+            "persistent_notification",
+            "create",
+        ):
+            return
+
+        title = f"🚨 {alarm.name}"
+
+        message = (
+            "### ALARM — ACTIVE\n\n"
+            f"**Value:** `{alarm.trigger_value}`  \n"
+            f"**Condition:** `{alarm.condition}`  \n"
+            f"**Limit:** `{alarm.threshold}`  \n"
+            f"**Severity:** **{alarm.severity.upper()}**  \n\n"
+            "[**OPEN ALARM MANAGER →**](/alarm-manager)"
+        )
+
+        await self.hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {
+                "title": title,
+                "message": message,
+                "notification_id": f"{DOMAIN}_{alarm.alarm_id}",
+            },
+            blocking=False,
+        )
+
+        targets = self._get_notification_targets(
+            alarm.severity
+        )
+
+        for _target_name, service in targets:
+            if not self.hass.services.has_service(
+                "notify",
+                service,
+            ):
+                continue
+
+            await self.hass.services.async_call(
+                "notify",
+                service,
+                {
+                    "title": f"🚨 {alarm.name}",
+                    "message": (
+                        f"Alarm active: {alarm.trigger_value} "
+                        f"({alarm.condition} {alarm.threshold})"
+                    ),
+                    "data": {
+                        "url": "/alarm-manager",
+                    },
+                },
+                blocking=False,
+            )
+
     async def async_add_alarm(
         self,
         config: AlarmConfig | None = None,
@@ -319,17 +415,25 @@ class AlarmManager:
     async def async_acknowledge_alarm(
         self,
         alarm_id: str,
+        user_id: str | None = None,
     ) -> bool:
-        """Acknowledge one alarm."""
+        """Acknowledge one alarm and record who acknowledged it."""
 
         alarm = self._alarms.get(alarm_id)
 
         if alarm is None:
             return False
 
+        acknowledged_by, acknowledged_by_user_id = (
+            await self._get_acknowledger(user_id)
+        )
+
         # ACTIVE -> ACKNOWLEDGED
         if alarm.state == STATE_ACTIVE:
-            alarm.acknowledge()
+            alarm.acknowledge(
+                acknowledged_by=acknowledged_by,
+                acknowledged_by_user_id=acknowledged_by_user_id,
+            )
 
             await self.async_save()
 
@@ -342,7 +446,7 @@ class AlarmManager:
         # INACTIVE -> NORMAL
         #
         # The occurrence already exists in history.
-        # Add the acknowledgement timestamp to that
+        # Add the acknowledgement information to that
         # occurrence before resetting the alarm.
         if alarm.state == STATE_INACTIVE:
             acknowledgement_time = (
@@ -352,10 +456,16 @@ class AlarmManager:
             alarm.acknowledged_at = (
                 acknowledgement_time
             )
+            alarm.acknowledged_by = acknowledged_by
+            alarm.acknowledged_by_user_id = (
+                acknowledged_by_user_id
+            )
 
             self._update_history_acknowledgement(
                 alarm_id,
                 acknowledgement_time,
+                acknowledged_by,
+                acknowledged_by_user_id,
             )
 
             alarm.reset()
@@ -376,7 +486,10 @@ class AlarmManager:
 
         return True
 
-    async def async_acknowledge_all(self) -> None:
+    async def async_acknowledge_all(
+        self,
+        user_id: str | None = None,
+    ) -> None:
         """Acknowledge all unacknowledged alarms."""
 
         changed = False
@@ -386,10 +499,17 @@ class AlarmManager:
             datetime.now(timezone.utc)
         )
 
+        acknowledged_by, acknowledged_by_user_id = (
+            await self._get_acknowledger(user_id)
+        )
+
         for alarm in self._alarms.values():
 
             if alarm.state == STATE_ACTIVE:
-                alarm.acknowledge()
+                alarm.acknowledge(
+                    acknowledged_by=acknowledged_by,
+                    acknowledged_by_user_id=acknowledged_by_user_id,
+                )
                 changed = True
 
             elif alarm.state == STATE_INACTIVE:
@@ -397,10 +517,16 @@ class AlarmManager:
                 alarm.acknowledged_at = (
                     acknowledgement_time
                 )
+                alarm.acknowledged_by = acknowledged_by
+                alarm.acknowledged_by_user_id = (
+                    acknowledged_by_user_id
+                )
 
                 self._update_history_acknowledgement(
                     alarm.alarm_id,
                     acknowledgement_time,
+                    acknowledged_by,
+                    acknowledged_by_user_id,
                 )
 
                 alarm.reset()
@@ -420,6 +546,30 @@ class AlarmManager:
 
         if history_changed:
             self._notify_history_updated()
+
+    async def _get_acknowledger(
+        self,
+        user_id: str | None,
+    ) -> tuple[str, str | None]:
+        """Return a display name and user ID for an acknowledgement."""
+
+        if not user_id:
+            return "System", None
+
+        user = await self.hass.auth.async_get_user(
+            user_id
+        )
+
+        if user is None:
+            return user_id, user_id
+
+        display_name = getattr(
+            user,
+            "name",
+            None,
+        ) or user_id
+
+        return display_name, user_id
 
     async def async_clear_history(self) -> None:
         """Clear all alarm history."""
@@ -487,6 +637,8 @@ class AlarmManager:
             alarm.state = STATE_NORMAL
             alarm.activated_at = None
             alarm.acknowledged_at = None
+            alarm.acknowledged_by = None
+            alarm.acknowledged_by_user_id = None
             alarm.cleared_at = None
             alarm.trigger_value = None
 
@@ -498,6 +650,7 @@ class AlarmManager:
                 )
 
                 await self.async_save()
+                await self._create_alarm_notification(alarm)
 
                 return
 
@@ -530,6 +683,7 @@ class AlarmManager:
             )
 
             await self.async_save()
+            await self._create_alarm_notification(alarm)
 
             return
 
@@ -634,6 +788,7 @@ class AlarmManager:
             )
 
             await self.async_save()
+            await self._create_alarm_notification(alarm)
 
             self._notify_alarm_updated(
                 alarm_id
@@ -691,6 +846,10 @@ class AlarmManager:
             "acknowledged_at": self._datetime_to_string(
                 alarm.acknowledged_at
             ),
+            "acknowledged_by": alarm.acknowledged_by,
+            "acknowledged_by_user_id": (
+                alarm.acknowledged_by_user_id
+            ),
             "cleared_at": self._datetime_to_string(
                 alarm.cleared_at
             ),
@@ -713,6 +872,8 @@ class AlarmManager:
         self,
         alarm_id: str,
         acknowledged_at: datetime,
+        acknowledged_by: str | None,
+        acknowledged_by_user_id: str | None,
     ) -> None:
         """Update the history record for an inactive alarm."""
 
@@ -734,6 +895,12 @@ class AlarmManager:
                 record[
                     "acknowledged_at"
                 ] = timestamp
+                record[
+                    "acknowledged_by"
+                ] = acknowledged_by
+                record[
+                    "acknowledged_by_user_id"
+                ] = acknowledged_by_user_id
                 break
 
     @staticmethod
@@ -833,6 +1000,12 @@ class AlarmManager:
                     "acknowledged_at"
                 )
             ),
+            acknowledged_by=raw.get(
+                "acknowledged_by"
+            ),
+            acknowledged_by_user_id=raw.get(
+                "acknowledged_by_user_id"
+            ),
             cleared_at=self._parse_datetime(
                 raw.get(
                     "cleared_at"
@@ -866,6 +1039,10 @@ class AlarmManager:
             ),
             "acknowledged_at": self._datetime_to_string(
                 alarm.acknowledged_at
+            ),
+            "acknowledged_by": alarm.acknowledged_by,
+            "acknowledged_by_user_id": (
+                alarm.acknowledged_by_user_id
             ),
             "cleared_at": self._datetime_to_string(
                 alarm.cleared_at

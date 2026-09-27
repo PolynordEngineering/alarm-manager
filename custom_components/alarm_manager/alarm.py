@@ -34,6 +34,8 @@ class Alarm:
 
     activated_at: datetime | None = None
     acknowledged_at: datetime | None = None
+    acknowledged_by: str | None = None
+    acknowledged_by_user_id: str | None = None
     cleared_at: datetime | None = None
 
     last_value: Any = None
@@ -48,12 +50,18 @@ class Alarm:
         if self.state == STATE_NORMAL:
             self.activated_at = utcnow()
             self.acknowledged_at = None
+            self.acknowledged_by = None
+            self.acknowledged_by_user_id = None
             self.cleared_at = None
             self.trigger_value = value
 
         self.state = STATE_ACTIVE
 
-    def acknowledge(self) -> None:
+    def acknowledge(
+        self,
+        acknowledged_by: str | None = None,
+        acknowledged_by_user_id: str | None = None,
+    ) -> None:
         """Acknowledge the alarm."""
 
         if self.state == STATE_ACTIVE:
@@ -68,6 +76,12 @@ class Alarm:
             if self.acknowledged_at is None:
                 self.acknowledged_at = utcnow()
 
+            if acknowledged_by is not None:
+                self.acknowledged_by = acknowledged_by
+
+            if acknowledged_by_user_id is not None:
+                self.acknowledged_by_user_id = acknowledged_by_user_id
+
         elif self.state == STATE_INACTIVE:
             # The condition has already returned to normal.
             #
@@ -77,6 +91,12 @@ class Alarm:
             # able to update its history record before the final reset.
             if self.acknowledged_at is None:
                 self.acknowledged_at = utcnow()
+
+            if acknowledged_by is not None:
+                self.acknowledged_by = acknowledged_by
+
+            if acknowledged_by_user_id is not None:
+                self.acknowledged_by_user_id = acknowledged_by_user_id
 
             self.state = STATE_NORMAL
 
@@ -117,6 +137,8 @@ class Alarm:
         self.state = STATE_NORMAL
         self.activated_at = None
         self.acknowledged_at = None
+        self.acknowledged_by = None
+        self.acknowledged_by_user_id = None
         self.cleared_at = None
         self.trigger_value = None
 

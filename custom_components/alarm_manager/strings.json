@@ -19,24 +19,54 @@
         }
       },
       "add_alarm": {
-        "title": "Add Alarm"
+        "title": "Add Alarm",
+        "data": {
+          "name": "Name",
+          "entity_id": "Entity",
+          "condition": "Condition",
+          "threshold": "Threshold",
+          "severity": "Severity",
+          "delay": "Activation Delay",
+          "hysteresis": "Hysteresis"
+        }
       },
       "edit_alarm": {
-        "title": "Select Alarm"
+        "title": "Select Alarm",
+        "data": {
+          "alarm_id": "Alarm"
+        }
       },
       "edit_details": {
-        "title": "Edit Alarm"
+        "title": "Edit Alarm",
+        "data": {
+          "name": "Name",
+          "entity_id": "Entity",
+          "condition": "Condition",
+          "threshold": "Threshold",
+          "severity": "Severity",
+          "delay": "Activation Delay",
+          "hysteresis": "Hysteresis"
+        }
       },
       "delete_alarm": {
-        "title": "Delete Alarm"
+        "title": "Delete Alarm",
+        "data": {
+          "alarm_id": "Alarm"
+        }
       },
       "confirm_delete": {
         "title": "Confirm Delete",
-        "description": "Are you sure you want to delete this alarm?"
+        "description": "Are you sure you want to delete this alarm?",
+        "data": {
+          "confirm": "Confirm deletion"
+        }
       },
       "notifications": {
         "title": "Notifications",
-        "description": "Configure the Home Assistant notification service used for mobile alarm notifications."
+        "description": "Configure the Home Assistant notification service used for mobile alarm notifications.",
+        "data": {
+          "notification_service": "Mobile notification service"
+        }
       },
       "add_notification_target": {
         "title": "Add Notification Target",
