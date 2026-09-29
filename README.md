@@ -6,6 +6,11 @@ Alarm Manager adds a dedicated alarm layer to Home Assistant for users who want 
 
 ![Alarm Manager](docs/images/alarm-panel.png)
 
+
+[![☕ Buy Me a Coffee](https://img.shields.io/badge/☕-Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge)](https://buymeacoffee.com/polynordengineering)
+
+Turn ordinary Home Assistant entities into managed alarms with lifecycle, acknowledgement, delay, hysteresis and history.
+
 ## ✨ What is new in v0.2.0
 
 **v0.2.0 is the current official GitHub release of Alarm Manager.** It introduces the expanded alarm model and a new visual workflow for creating and managing alarms.
@@ -474,6 +479,16 @@ Possible future areas include:
 - Configurable history retention
 
 Suggestions and practical use cases are welcome.
+
+## ☕ Support the Project
+
+Alarm Manager is open source and free to use.
+
+If you find it useful and would like to support continued development, testing and new features, you can buy me a coffee:
+
+[☕ Support Polynord Engineering](https://buymeacoffee.com/polynordengineering)
+
+Thank you for supporting the project!
 
 ---
 
