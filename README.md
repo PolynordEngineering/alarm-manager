@@ -8,10 +8,10 @@ Alarm Manager adds a dedicated alarm layer to Home Assistant for users who want 
 
 ## ✨ What is new in v0.2.0
 
-Version **0.2.0** is a major UI and alarm-engine update focused on making Alarm Manager easier to configure while adding more advanced alarm logic.
+**v0.2.0 is the current official GitHub release of Alarm Manager.** It introduces the expanded alarm model and a new visual workflow for creating and managing alarms.
 
-- 🧩 **Automation-style alarm editor** — create and edit alarms from the Alarm Manager sidebar without navigating through Home Assistant Integrations.
-- 🎯 **Primary alarm entity** — define the entity and its state/threshold first, then add optional additional conditions.
+- 🧩 **Automation-style alarm editor** — create and edit alarms from the Alarm Manager sidebar.
+- 🎯 **Primary alarm entity** — define the main entity and its state/threshold first, then add optional conditions.
 - 🔗 **Multiple conditions** — combine conditions with **ALL / AND** or **ANY / OR** logic.
 - 🕐 **Time conditions** — after, before and between time windows, including overnight ranges.
 - ⏱️ **Per-condition delay** — require an individual condition to remain true for a configured period.
@@ -22,9 +22,9 @@ Version **0.2.0** is a major UI and alarm-engine update focused on making Alarm 
 - 📱 **Mobile-friendly UI** — safe-area handling and mobile navigation support.
 - 🗂️ **History severity filtering** — filter completed alarm occurrences by severity.
 - 👤 **Acknowledgement tracking** — record the Home Assistant user who acknowledged an alarm.
-- 🔄 **Improved condition reconciliation** — alarm state is re-evaluated so stale active occurrences can clear correctly.
+- 🔄 **Improved condition reconciliation** — stale active occurrences can clear correctly when their conditions return to normal.
 
-> **v0.2.0 is a development release candidate for the new alarm model.** Test it in your environment before deploying it to production systems.
+> **HACS status:** The HACS submission was prepared against the earlier v0.1.7 release. v0.2.0 is now the current official GitHub release. HACS availability and GitHub release availability are separate.
 
 ---
 
@@ -46,109 +46,80 @@ The integration is local and works with entities already available in Home Assis
 
 ---
 
-## 🖥️ One place to manage alarms
+## 🖥️ Alarm Manager interface
 
-Alarm Manager v0.2.0 moves day-to-day alarm configuration into its own Home Assistant sidebar experience.
+v0.2.0 introduces a dedicated Alarm Manager experience for day-to-day alarm operation.
 
-### Alarm Manager
-
-Use the **Alarm Manager** sidebar entry to:
+From the Alarm Manager interface you can:
 
 - View current alarms
 - Add alarms
 - Edit alarms
 - Delete alarms
 - Acknowledge alarms
-- Review history
+- Review alarm history
 - Filter history by severity
-
-### Notifications
-
-Use the dedicated **Notifications** sidebar entry to:
-
-- Configure the default notification service
-- Add notification targets
-- Edit notification targets
-- Delete notification targets
-- Configure severity routing
+- Manage notification targets
 
 The Home Assistant integration configuration remains available for integration-level management, but normal alarm operation no longer requires repeatedly navigating through **Settings → Devices & services**.
 
-![Alarm Manager v0.2.0](docs/images/alarm-panel.png)
+![Alarm Manager panel](docs/images/alarm-panel.png)
 
-*Alarm Manager v0.2.0: current alarms, notification targets and history in one place.*
+*Alarm Manager showing active alarms, notification targets and alarm history.*
 
 ---
 
-## 🧩 Automation-style alarm editor
+## 🧩 Add an alarm
 
-The alarm editor is designed around a simple flow:
+The v0.2.0 editor is designed around a simple **Alarm → When → Then do** workflow.
 
-```text
-ALARM
-  │
-  ├── Name
-  ├── Primary entity
-  ├── Severity
-  ├── Activation delay
-  └── Hysteresis
+### Alarm
 
-WHEN
-  │
-  ├── Primary entity condition
-  │
-  ├── AND / OR
-  ├── Additional condition
-  ├── AND / OR
-  └── Additional condition
+Start with the alarm name, severity, activation delay and hysteresis.
 
-THEN
-  │
-  └── Alarm becomes active
-```
+![Add Alarm](docs/images/add-alarm.png)
 
-A simple alarm can contain only a primary entity condition.
-
-A more advanced alarm can add additional conditions.
-
-A manual alarm can have **no automatic conditions at all** and can be triggered through the `alarm_manager.trigger_alarm` service.
-
-![Add Alarm editor](docs/images/add-alarm.png)
-
-*Automation-style alarm editor with a primary alarm entity and optional additional logic.*
+The basic editor lets you define the alarm without navigating through multiple configuration pages.
 
 ---
 
 ## 🎯 Primary alarm entity
 
-The first condition defines the main alarm entity.
+The alarm entity is the **primary condition** of the alarm.
 
-For a binary alarm:
+For example:
 
 ```text
-Name:       Garage Door Open
-Entity:     binary_sensor.garage_door
-Condition:  is ON
-Severity:   Warning
+Alarm name:       Garage Door Open
+Severity:         Warning
+Entity:           binary_sensor.garage_door
+State / condition: is ON
 ```
 
 For a numeric alarm:
 
 ```text
-Name:       GT1 High Temperature
-Entity:     sensor.gt1_temperature
-Condition:  is above
-Limit:      29 °C
-Severity:   Alarm
+Alarm name:       GT1 High Temperature
+Severity:         Alarm
+Entity:           sensor.gt1_temperature
+State / condition: is above
+Value / threshold: 29 °C
 ```
 
-The Alarm Manager panel displays the current value and configured limit so the operator can immediately see why an alarm is active.
+The editor makes the primary entity explicit: **additional logic is optional**.
 
 ---
 
-## 🔗 Multiple conditions
+## 🔗 Additional conditions
 
-Additional conditions can be added when a simple entity condition is not enough.
+When a simple primary condition is not enough, use **Add condition** to add more logic.
+
+![Alarm with additional condition](docs/images/add-alarm-conditions.png)
+
+Additional conditions can be combined using:
+
+- **AND — all must be true**
+- **OR — any can be true**
 
 Example:
 
@@ -160,7 +131,7 @@ Outside Temperature < 15 °C
 Time is after 21:00
 ```
 
-Or use **ANY / OR**:
+Or:
 
 ```text
 Pump A = OFF
@@ -169,8 +140,6 @@ Pump B = OFF
         OR
 Motor Fault = ON
 ```
-
-Each condition is configured independently.
 
 ### Supported entity conditions
 
@@ -189,17 +158,17 @@ Each condition is configured independently.
 - Before
 - Between
 
-Overnight time ranges such as `21:00 → 06:00` are supported.
+Overnight ranges such as `21:00 → 06:00` are supported.
 
 ---
 
-## ⏱️ Condition delay and hysteresis
+## ⏱️ Activation delay and hysteresis
 
-v0.2.0 supports delay and hysteresis at both alarm and condition level.
+Alarm Manager supports filtering conditions before an alarm becomes active.
 
-### Condition delay
+### Activation delay
 
-A condition can require a value to remain true before that condition becomes active.
+A condition can require a value to remain true for a configured period.
 
 Example:
 
@@ -208,11 +177,11 @@ GT1 Temperature > 29 °C
 Condition delay: 30 seconds
 ```
 
-The temperature must remain above 29 °C for 30 seconds before the condition becomes true.
+The condition must remain true for 30 seconds before it becomes active.
 
-### Condition hysteresis
+### Hysteresis
 
-Numeric conditions can also have their own hysteresis.
+Numeric conditions can use hysteresis to reduce chatter around a limit.
 
 Example:
 
@@ -221,19 +190,17 @@ Above: 29 °C
 Hysteresis: 2 °C
 ```
 
-The alarm condition does not immediately chatter around the 29 °C boundary. The clear threshold is offset by the configured hysteresis.
-
-### Alarm-level delay and hysteresis
-
-The overall alarm also retains its activation delay and hysteresis settings for installations that need an additional layer of filtering.
+The configured hysteresis is applied when determining when the condition returns to normal.
 
 ---
 
 ## 🚨 Manual / conditionless alarms
 
-Not every alarm needs to be driven directly by an entity condition.
+Not every alarm needs an entity condition.
 
-You can create an alarm without automatic conditions and trigger it from another Home Assistant workflow:
+You can create a conditionless alarm and trigger it externally from another Home Assistant workflow, automation, script or PLC integration.
+
+For example:
 
 ```yaml
 action: alarm_manager.trigger_alarm
@@ -241,13 +208,13 @@ data:
   alarm_id: plc_emergency_stop
 ```
 
-This is useful when a PLC, automation or integration already contains the logic that determines when an alarm should occur.
+This is useful when another system already contains the logic that determines when an alarm should occur.
 
 ---
 
 ## 🔄 Alarm lifecycle
 
-Alarm Manager treats each alarm occurrence as a lifecycle:
+Alarm Manager treats an alarm occurrence as a lifecycle:
 
 ```text
 NORMAL
@@ -289,41 +256,45 @@ The exact operational meaning is defined by your installation's alarm philosophy
 
 ## 🔔 Notifications
 
-Alarm Manager supports persistent Home Assistant notifications and mobile notification services.
+v0.2.0 introduces dedicated notification target management.
 
 ### Notification targets
 
-Create named targets such as:
+A target can be a Home Assistant mobile app, phone, tablet or another Home Assistant notification service.
+
+![Notification target](docs/images/notification-target.png)
+
+For example:
 
 ```text
-Operator
-Maintenance
-Duty Engineer
-Mobile
+Target:       Kristofer
+Notify service: mobile_app_kristofer
 ```
-
-Each target can use its own Home Assistant `notify` service.
-
-![Notification target editor](docs/images/notification-target.png)
-
-*Notification target editor with Home Assistant notify service and severity routing.*
 
 ### Severity routing
 
-Different targets can receive different severities:
+Each target can be configured for the severities it should receive:
 
-```text
-INFO      → Operator
-WARNING   → Operator + Maintenance
-ALARM     → Operator + Maintenance
-CRITICAL  → Operator + Duty Engineer
-```
+- Critical
+- Alarm
+- Warning
+- Info
 
-Routing is configured from the Alarm Manager **Notifications** page.
+This allows different operators or devices to receive different alarm levels.
 
-### Direct links
+---
 
-Notifications can contain a direct link back to the Alarm Manager panel so the operator can immediately inspect and acknowledge the alarm.
+## 📱 Home Assistant notifications
+
+Alarm Manager notifications can appear directly in Home Assistant.
+
+![Home Assistant notifications](docs/images/mobile-notifications.png)
+
+Notifications include the alarm name, current state, logic and conditions, severity and a direct link back to Alarm Manager.
+
+This gives the operator a quick path from:
+
+**Notification → Alarm Manager → Acknowledge / investigate**
 
 ---
 
@@ -337,7 +308,7 @@ Current alarms and history can show:
 - Acknowledgement time
 - Acknowledged by
 
-Notification targets are separate from Home Assistant user accounts. Alarm Manager uses notification targets to determine **where** alarms are delivered.
+Acknowledgement records that an operator has seen the alarm; it does not by itself clear the alarm.
 
 ---
 
@@ -358,17 +329,7 @@ History can include:
 - Acknowledgement time
 - Acknowledging user
 
-### Severity filter
-
-The history view can be filtered by:
-
-- All severities
-- Critical
-- Alarm
-- Warning
-- Info
-
-The filter only affects the history list and does not change current alarms.
+History can be filtered by severity.
 
 There is currently **no automatic history retention limit**. History remains stored until it is cleared from Alarm Manager.
 
@@ -381,8 +342,29 @@ The Alarm Manager frontend includes mobile-specific handling for Home Assistant'
 On supported mobile layouts:
 
 - The Home Assistant sidebar can be opened from Alarm Manager.
-- Editor controls respect the phone status/navigation areas.
+- Editor controls respect phone safe areas.
 - Add/Edit screens keep their Back and Save controls accessible.
+- Alarm notifications can link directly back to Alarm Manager.
+
+---
+
+## ⚙️ Home Assistant integration settings
+
+Alarm Manager is also visible under Home Assistant's integration settings.
+
+For the official v0.2.0 release, the integration version is:
+
+```text
+0.2.0
+```
+
+If Home Assistant still shows a version such as `0.2.0-beta.17`, it is running an older beta installation. Remove/update that installation and restart Home Assistant so the released `0.2.0` manifest is loaded.
+
+The official v0.2.0 repository manifest contains:
+
+```json
+"version": "0.2.0"
+```
 
 ---
 
@@ -390,9 +372,9 @@ On supported mobile layouts:
 
 ### HACS
 
-Alarm Manager is intended for installation through HACS.
+Alarm Manager is available from this GitHub repository. HACS review/default-list status is separate from the GitHub release itself.
 
-While the repository is awaiting/default-list review, it can be added as a custom repository:
+If the repository is not yet in the HACS default list, it can be added as a custom repository:
 
 1. Open **HACS**.
 2. Go to **Integrations**.
@@ -405,12 +387,10 @@ https://github.com/PolynordEngineering/alarm-manager
 ```
 
 6. Select **Integration**.
-7. Install **Alarm Manager**.
+7. Install Alarm Manager.
 8. Restart Home Assistant.
 
 Then open the **Alarm Manager** sidebar panel.
-
-> HACS default-list inclusion and the integration release are separate steps. Follow the repository/release status for the version you intend to install.
 
 ### Manual installation
 
@@ -460,44 +440,23 @@ See `custom_components/alarm_manager/services.yaml` for the current service sche
 
 ![Alarm Manager panel](docs/images/alarm-panel.png)
 
-### Add / Edit Alarm
+### Add Alarm
 
 ![Add Alarm](docs/images/add-alarm.png)
+
+### Add Alarm with additional conditions
+
+![Add Alarm with conditions](docs/images/add-alarm-conditions.png)
 
 ### Notification Target
 
 ![Notification target](docs/images/notification-target.png)
 
-### Alarm History
+### Home Assistant Notifications
 
-![Alarm History](docs/images/history-filter.png)
+![Home Assistant notifications](docs/images/mobile-notifications.png)
 
-Additional UI captures, including severity routing and mobile notifications, are kept in [`docs/images/`](docs/images/).
-
----
-
-## 🧪 v0.2.0 testing status
-
-v0.2.0 has been developed through a series of beta builds covering the new editor, multi-condition alarms, notifications, mobile UI, history filtering and alarm-state reconciliation.
-
-Before calling the release production-ready, test at minimum:
-
-- Creating a binary alarm
-- Creating a numeric alarm
-- Editing an existing alarm
-- Adding/removing additional conditions
-- ALL / ANY logic
-- Condition delay
-- Condition hysteresis
-- Alarm delay/hysteresis
-- Conditionless/manual alarms
-- Alarm acknowledgement and clearing
-- Notification targets
-- Severity routing
-- History filtering
-- Desktop UI
-- Home Assistant mobile UI
-- Home Assistant restart and persistence
+Additional UI captures are kept in [`docs/images/`](docs/images/).
 
 ---
 
