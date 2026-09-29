@@ -28,11 +28,22 @@ from .const import (
     CONF_HYSTERESIS,
     CONF_SEVERITY,
     CONF_THRESHOLD,
+    CONF_LOGIC,
+    CONF_CONDITION_TYPE,
+    CONF_START_TIME,
+    CONF_END_TIME,
+    CONDITION_AFTER,
+    CONDITION_BEFORE,
+    CONDITION_BETWEEN,
+    CONDITION_TYPE_ENTITY,
+    CONDITION_TYPE_TIME,
     DOMAIN,
     SEVERITY_ALARM,
     SEVERITY_CRITICAL,
     SEVERITY_INFO,
     SEVERITY_WARNING,
+    LOGIC_ALL,
+    LOGIC_ANY,
 )
 
 
@@ -99,6 +110,8 @@ class AlarmManagerOptionsFlow(
 
         self._selected_alarm_id: str | None = None
         self._selected_notification_target: str | None = None
+        self._pending_alarm: dict[str, Any] = {}
+        self._pending_conditions: list[dict[str, Any]] = []
 
     async def async_step_init(
         self,
@@ -147,17 +160,324 @@ class AlarmManagerOptionsFlow(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
-        """Create a new alarm."""
-
+        """Start a new alarm and collect its general settings."""
         if user_input is not None:
-            return await self._create_alarm(
-                user_input
-            )
+            self._pending_alarm = dict(user_input)
+            self._pending_conditions = []
+            return self._show_condition_menu()
 
         return self.async_show_form(
             step_id="add_alarm",
-            data_schema=self._alarm_schema(),
+            data_schema=self._alarm_general_schema(),
         )
+
+    def _show_condition_menu(self) -> ConfigFlowResult:
+        """Show the condition builder menu."""
+        options = {"add_condition": "Add Condition"}
+        if self._pending_conditions:
+            options["edit_condition"] = "Edit Condition"
+            options["remove_condition"] = "Remove Condition"
+        options["finish_alarm"] = "Save Alarm"
+        return self.async_show_menu(
+            step_id="condition_menu",
+            menu_options=options,
+            description_placeholders={"summary": self._condition_summary()},
+        )
+
+    async def async_step_condition_menu(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Show the condition builder menu."""
+        return self._show_condition_menu()
+
+    async def async_step_add_condition(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Select the type of condition to add."""
+        if user_input is not None:
+            if user_input[CONF_CONDITION_TYPE] == CONDITION_TYPE_TIME:
+                return await self.async_step_add_time_condition()
+            return await self.async_step_add_entity_condition()
+
+        schema = vol.Schema({
+            vol.Required(CONF_CONDITION_TYPE, default=CONDITION_TYPE_ENTITY): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=CONDITION_TYPE_ENTITY, label="Entity"),
+                        selector.SelectOptionDict(value=CONDITION_TYPE_TIME, label="Time"),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            )
+        })
+        return self.async_show_form(step_id="add_condition", data_schema=schema)
+
+    async def async_step_add_entity_condition(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Add an entity-based condition."""
+        if user_input is not None:
+            self._pending_conditions.append({
+                "type": CONDITION_TYPE_ENTITY,
+                "entity_id": user_input[CONF_ENTITY_ID],
+                "condition": user_input[CONF_CONDITION],
+                "threshold": user_input.get(CONF_THRESHOLD),
+            })
+            return self._show_condition_menu()
+
+        schema = vol.Schema({
+            vol.Required(CONF_ENTITY_ID): selector.EntitySelector(
+                selector.EntitySelectorConfig(multiple=False)
+            ),
+            vol.Required(CONF_CONDITION, default=CONDITION_ABOVE): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=CONDITION_ABOVE, label="Above"),
+                        selector.SelectOptionDict(value=CONDITION_BELOW, label="Below"),
+                        selector.SelectOptionDict(value=CONDITION_EQUAL, label="Equal"),
+                        selector.SelectOptionDict(value=CONDITION_NOT_EQUAL, label="Not equal"),
+                        selector.SelectOptionDict(value=CONDITION_ON, label="On"),
+                        selector.SelectOptionDict(value=CONDITION_OFF, label="Off"),
+                        selector.SelectOptionDict(value=CONDITION_UNAVAILABLE, label="Unavailable"),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(CONF_THRESHOLD, default=0.0): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=-1000000, max=1000000, step=0.1, mode=selector.NumberSelectorMode.BOX)
+            ),
+        })
+        return self.async_show_form(step_id="add_entity_condition", data_schema=schema)
+
+    async def async_step_add_time_condition(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Add a time-based condition."""
+        if user_input is not None:
+            condition = user_input[CONF_CONDITION]
+            item = {
+                "type": CONDITION_TYPE_TIME,
+                "condition": condition,
+                "start_time": str(user_input[CONF_START_TIME]),
+            }
+            if condition == CONDITION_BETWEEN:
+                item["end_time"] = str(user_input[CONF_END_TIME])
+            self._pending_conditions.append(item)
+            return self._show_condition_menu()
+
+        schema = vol.Schema({
+            vol.Required(CONF_CONDITION, default=CONDITION_AFTER): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=CONDITION_AFTER, label="After"),
+                        selector.SelectOptionDict(value=CONDITION_BEFORE, label="Before"),
+                        selector.SelectOptionDict(value=CONDITION_BETWEEN, label="Between"),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(CONF_START_TIME): selector.TimeSelector(),
+            vol.Optional(CONF_END_TIME, default="00:00:00"): selector.TimeSelector(),
+        })
+        return self.async_show_form(step_id="add_time_condition", data_schema=schema)
+
+    async def async_step_edit_condition(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Select and edit an existing condition."""
+        if not self._pending_conditions:
+            return self._show_condition_menu()
+        if user_input is not None:
+            index = int(user_input["condition_index"])
+            condition = self._pending_conditions[index]
+            self._editing_condition_index = index
+            if condition.get("type") == CONDITION_TYPE_TIME:
+                return await self.async_step_edit_time_condition()
+            return await self.async_step_edit_entity_condition()
+        options = [
+            selector.SelectOptionDict(value=str(index), label=self._condition_display(item, index))
+            for index, item in enumerate(self._pending_conditions)
+        ]
+        return self.async_show_form(
+            step_id="edit_condition",
+            data_schema=vol.Schema({
+                vol.Required("condition_index"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.DROPDOWN)
+                )
+            }),
+        )
+
+    async def async_step_edit_entity_condition(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Edit an entity condition."""
+        index = getattr(self, "_editing_condition_index", None)
+        condition = self._pending_conditions[index] if index is not None else None
+        if condition is None:
+            return self._show_condition_menu()
+        if user_input is not None:
+            self._pending_conditions[index] = {
+                "type": CONDITION_TYPE_ENTITY,
+                "entity_id": user_input[CONF_ENTITY_ID],
+                "condition": user_input[CONF_CONDITION],
+                "threshold": user_input.get(CONF_THRESHOLD),
+            }
+            return self._show_condition_menu()
+        return self.async_show_form(
+            step_id="edit_entity_condition",
+            data_schema=vol.Schema({
+                vol.Required(CONF_ENTITY_ID, default=condition.get("entity_id", "")): selector.EntitySelector(selector.EntitySelectorConfig(multiple=False)),
+                vol.Required(CONF_CONDITION, default=condition.get("condition", CONDITION_ABOVE)): selector.SelectSelector(selector.SelectSelectorConfig(options=[selector.SelectOptionDict(value=x, label=x.replace("_", " ").title()) for x in CONDITIONS], mode=selector.SelectSelectorMode.DROPDOWN)),
+                vol.Optional(CONF_THRESHOLD, default=condition.get("threshold", 0.0)): selector.NumberSelector(selector.NumberSelectorConfig(min=-1000000, max=1000000, step=0.1, mode=selector.NumberSelectorMode.BOX)),
+            }),
+        )
+
+    async def async_step_edit_time_condition(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Edit a time condition."""
+        index = getattr(self, "_editing_condition_index", None)
+        condition = self._pending_conditions[index] if index is not None else None
+        if condition is None:
+            return self._show_condition_menu()
+        if user_input is not None:
+            item = {
+                "type": CONDITION_TYPE_TIME,
+                "condition": user_input[CONF_CONDITION],
+                "start_time": str(user_input[CONF_START_TIME]),
+            }
+            if user_input[CONF_CONDITION] == CONDITION_BETWEEN:
+                item["end_time"] = str(user_input[CONF_END_TIME])
+            self._pending_conditions[index] = item
+            return self._show_condition_menu()
+        return self.async_show_form(
+            step_id="edit_time_condition",
+            data_schema=vol.Schema({
+                vol.Required(CONF_CONDITION, default=condition.get("condition", CONDITION_AFTER)): selector.SelectSelector(selector.SelectSelectorConfig(options=[selector.SelectOptionDict(value=x, label=x.title()) for x in [CONDITION_AFTER, CONDITION_BEFORE, CONDITION_BETWEEN]], mode=selector.SelectSelectorMode.DROPDOWN)),
+                vol.Required(CONF_START_TIME, default=condition.get("start_time", "21:00:00")): selector.TimeSelector(),
+                vol.Optional(CONF_END_TIME, default=condition.get("end_time", "06:00:00")): selector.TimeSelector(),
+            }),
+        )
+
+    async def async_step_remove_condition(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Remove a condition."""
+        if not self._pending_conditions:
+            return self._show_condition_menu()
+        if user_input is not None:
+            index = int(user_input["condition_index"])
+            self._pending_conditions.pop(index)
+            return self._show_condition_menu()
+        options = [
+            selector.SelectOptionDict(value=str(index), label=self._condition_display(item, index))
+            for index, item in enumerate(self._pending_conditions)
+        ]
+        return self.async_show_form(
+            step_id="remove_condition",
+            data_schema=vol.Schema({
+                vol.Required("condition_index"): selector.SelectSelector(selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.DROPDOWN))
+            }),
+        )
+
+    async def async_step_finish_alarm(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Create or update the alarm from the condition builder."""
+        manager = self._get_manager()
+        if manager is None:
+            return self.async_abort(reason="manager_not_loaded")
+        first_entity = next(
+            (c for c in self._pending_conditions if c.get("type") == CONDITION_TYPE_ENTITY),
+            None,
+        )
+        config = AlarmConfig(
+            alarm_id=self._selected_alarm_id or str(uuid.uuid4()),
+            name=self._pending_alarm[CONF_NAME],
+            entity_id=first_entity.get("entity_id", "") if first_entity else "",
+            condition=first_entity.get("condition", CONDITION_ABOVE) if first_entity else CONDITION_AFTER,
+            threshold=first_entity.get("threshold") if first_entity else None,
+            severity=self._pending_alarm[CONF_SEVERITY],
+            delay=self._pending_alarm[CONF_DELAY],
+            hysteresis=self._pending_alarm[CONF_HYSTERESIS],
+            conditions=list(self._pending_conditions),
+            logic=self._pending_alarm.get(CONF_LOGIC, LOGIC_ALL),
+        )
+        if self._selected_alarm_id:
+            await manager.async_update_alarm(config)
+        else:
+            await manager.async_add_alarm(config)
+
+        self._selected_alarm_id = None
+        self._pending_alarm = {}
+        self._pending_conditions = []
+        return self._show_main_menu()
+
+    def _condition_display(self, item: dict[str, Any], index: int) -> str:
+        """Return a readable condition label."""
+        if item.get("type") == CONDITION_TYPE_TIME:
+            text = f"Time {item.get('condition', '')} {item.get('start_time', '')}"
+            if item.get("condition") == CONDITION_BETWEEN:
+                text += f" – {item.get('end_time', '')}"
+        else:
+            text = f"{item.get('entity_id', 'Entity')} {item.get('condition', '')}"
+            if item.get("condition") in {CONDITION_ABOVE, CONDITION_BELOW, CONDITION_EQUAL, CONDITION_NOT_EQUAL}:
+                text += f" {item.get('threshold', '')}"
+        return f"{index + 1}. {text}"
+
+    def _condition_summary(self) -> str:
+        """Return a compact condition summary."""
+        if not self._pending_conditions:
+            return "No conditions added yet."
+        lines = [f"Logic: {self._pending_alarm.get(CONF_LOGIC, LOGIC_ALL).upper()}"]
+        for index, item in enumerate(self._pending_conditions, 1):
+            if item.get("type") == CONDITION_TYPE_TIME:
+                text = f"{item.get('condition')} {item.get('start_time')}"
+                if item.get("end_time"):
+                    text += f"–{item['end_time']}"
+            else:
+                text = f"{item.get('entity_id')} {item.get('condition')} {item.get('threshold', '')}"
+            lines.append(f"{index}. {text}")
+        return "\n".join(lines)
+
+    def _alarm_general_schema(self) -> vol.Schema:
+        """Build general alarm settings schema."""
+        return vol.Schema({
+            vol.Required(CONF_NAME, default="New Alarm"): selector.TextSelector(selector.TextSelectorConfig()),
+            vol.Required(CONF_SEVERITY, default=SEVERITY_WARNING): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=SEVERITY_INFO, label="Info"),
+                        selector.SelectOptionDict(value=SEVERITY_WARNING, label="Warning"),
+                        selector.SelectOptionDict(value=SEVERITY_ALARM, label="Alarm"),
+                        selector.SelectOptionDict(value=SEVERITY_CRITICAL, label="Critical"),
+                    ], mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(CONF_LOGIC, default=LOGIC_ALL): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=LOGIC_ALL, label="ALL conditions must be true"),
+                        selector.SelectOptionDict(value=LOGIC_ANY, label="ANY condition may be true"),
+                    ], mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(CONF_DELAY, default=0): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=3600, step=1, mode=selector.NumberSelectorMode.BOX, unit_of_measurement="s")
+            ),
+            vol.Required(CONF_HYSTERESIS, default=0.0): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=1000000, step=0.1, mode=selector.NumberSelectorMode.BOX)
+            ),
+        })
 
     async def async_step_edit_alarm(
         self,
@@ -527,281 +847,57 @@ class AlarmManagerOptionsFlow(
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Edit an existing alarm."""
-
         manager = self._get_manager()
-
         if manager is None:
-            return self.async_abort(
-                reason="manager_not_loaded"
-            )
-
+            return self.async_abort(reason="manager_not_loaded")
         alarm_id = self._selected_alarm_id
-
         if alarm_id is None:
-            return self.async_abort(
-                reason="alarm_not_selected"
-            )
-
-        alarm = manager.get_alarm(
-            alarm_id
-        )
-
+            return self.async_abort(reason="alarm_not_selected")
+        alarm = manager.get_alarm(alarm_id)
         if alarm is None:
-            return self.async_abort(
-                reason="alarm_not_found"
-            )
+            return self.async_abort(reason="alarm_not_found")
 
         if user_input is not None:
-            config = AlarmConfig(
-                alarm_id=alarm_id,
-                name=user_input[
-                    CONF_NAME
-                ],
-                entity_id=user_input[
-                    CONF_ENTITY_ID
-                ],
-                condition=user_input[
-                    CONF_CONDITION
-                ],
-                threshold=user_input.get(
-                    CONF_THRESHOLD
-                ),
-                severity=user_input[
-                    CONF_SEVERITY
-                ],
-                delay=user_input[
-                    CONF_DELAY
-                ],
-                hysteresis=user_input[
-                    CONF_HYSTERESIS
-                ],
-            )
-
-            updated = await manager.async_update_alarm(
-                config
-            )
-
-            if updated is None:
-                return self.async_abort(
-                    reason="alarm_not_found"
-                )
-
-            return self._show_main_menu()
-
-        schema = self._alarm_schema(
-            alarm=alarm
-        )
+            self._pending_alarm = dict(user_input)
+            self._pending_conditions = list(alarm.normalized_conditions)
+            return self._show_condition_menu()
 
         return self.async_show_form(
             step_id="edit_details",
-            data_schema=schema,
+            data_schema=self._alarm_general_schema_for_alarm(alarm),
         )
 
-    def _alarm_schema(
-        self,
-        alarm=None,
-    ) -> vol.Schema:
-        """Build the alarm configuration schema."""
-
-        if alarm is None:
-            name_default = "New Alarm"
-            entity_default = None
-            condition_default = CONDITION_ABOVE
-            threshold_default = 0.0
-            severity_default = SEVERITY_WARNING
-            delay_default = 0
-            hysteresis_default = 0.0
-
-        else:
-            name_default = alarm.name
-            entity_default = alarm.entity_id
-            condition_default = alarm.condition
-
-            threshold_default = (
-                alarm.threshold
-                if isinstance(
-                    alarm.threshold,
-                    (int, float),
-                )
-                else 0.0
-            )
-
-            severity_default = alarm.severity
-            delay_default = alarm.delay
-            hysteresis_default = alarm.hysteresis
-
-        schema = {
-            vol.Required(
-                CONF_NAME,
-                default=name_default,
-            ): selector.TextSelector(
-                selector.TextSelectorConfig()
-            ),
-
-            vol.Required(
-                CONF_ENTITY_ID,
-                default=entity_default,
-            ): selector.EntitySelector(
-                selector.EntitySelectorConfig(
-                    multiple=False
-                )
-            ),
-
-            vol.Required(
-                CONF_CONDITION,
-                default=condition_default,
-            ): selector.SelectSelector(
+    def _alarm_general_schema_for_alarm(self, alarm) -> vol.Schema:
+        """Build the general settings schema for an existing alarm."""
+        schema = self._alarm_general_schema()
+        # Rebuild with existing defaults.
+        return vol.Schema({
+            vol.Required(CONF_NAME, default=alarm.name): selector.TextSelector(selector.TextSelectorConfig()),
+            vol.Required(CONF_SEVERITY, default=alarm.severity): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[
-                        selector.SelectOptionDict(
-                            value=CONDITION_ABOVE,
-                            label="Above",
-                        ),
-                        selector.SelectOptionDict(
-                            value=CONDITION_BELOW,
-                            label="Below",
-                        ),
-                        selector.SelectOptionDict(
-                            value=CONDITION_EQUAL,
-                            label="Equal",
-                        ),
-                        selector.SelectOptionDict(
-                            value=CONDITION_NOT_EQUAL,
-                            label="Not equal",
-                        ),
-                        selector.SelectOptionDict(
-                            value=CONDITION_ON,
-                            label="On",
-                        ),
-                        selector.SelectOptionDict(
-                            value=CONDITION_OFF,
-                            label="Off",
-                        ),
-                        selector.SelectOptionDict(
-                            value=CONDITION_UNAVAILABLE,
-                            label="Unavailable",
-                        ),
-                    ],
-                    mode=(
-                        selector.SelectSelectorMode.DROPDOWN
-                    ),
+                        selector.SelectOptionDict(value=SEVERITY_INFO, label="Info"),
+                        selector.SelectOptionDict(value=SEVERITY_WARNING, label="Warning"),
+                        selector.SelectOptionDict(value=SEVERITY_ALARM, label="Alarm"),
+                        selector.SelectOptionDict(value=SEVERITY_CRITICAL, label="Critical"),
+                    ], mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
-
-            vol.Optional(
-                CONF_THRESHOLD,
-                default=threshold_default,
-            ): selector.NumberSelector(
-                selector.NumberSelectorConfig(
-                    min=-1000000,
-                    max=1000000,
-                    step=0.1,
-                    mode=selector.NumberSelectorMode.BOX,
-                )
-            ),
-
-            vol.Required(
-                CONF_SEVERITY,
-                default=severity_default,
-            ): selector.SelectSelector(
+            vol.Required(CONF_LOGIC, default=alarm.logic): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[
-                        selector.SelectOptionDict(
-                            value=SEVERITY_INFO,
-                            label="Info",
-                        ),
-                        selector.SelectOptionDict(
-                            value=SEVERITY_WARNING,
-                            label="Warning",
-                        ),
-                        selector.SelectOptionDict(
-                            value=SEVERITY_ALARM,
-                            label="Alarm",
-                        ),
-                        selector.SelectOptionDict(
-                            value=SEVERITY_CRITICAL,
-                            label="Critical",
-                        ),
-                    ],
-                    mode=(
-                        selector.SelectSelectorMode.DROPDOWN
-                    ),
+                        selector.SelectOptionDict(value=LOGIC_ALL, label="ALL conditions must be true"),
+                        selector.SelectOptionDict(value=LOGIC_ANY, label="ANY condition may be true"),
+                    ], mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
-
-            vol.Required(
-                CONF_DELAY,
-                default=delay_default,
-            ): selector.NumberSelector(
-                selector.NumberSelectorConfig(
-                    min=0,
-                    max=3600,
-                    step=1,
-                    mode=selector.NumberSelectorMode.BOX,
-                    unit_of_measurement="s",
-                )
+            vol.Required(CONF_DELAY, default=alarm.delay): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=3600, step=1, mode=selector.NumberSelectorMode.BOX, unit_of_measurement="s")
             ),
-
-            vol.Required(
-                CONF_HYSTERESIS,
-                default=hysteresis_default,
-            ): selector.NumberSelector(
-                selector.NumberSelectorConfig(
-                    min=0,
-                    max=1000000,
-                    step=0.1,
-                    mode=selector.NumberSelectorMode.BOX,
-                )
+            vol.Required(CONF_HYSTERESIS, default=alarm.hysteresis): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=1000000, step=0.1, mode=selector.NumberSelectorMode.BOX)
             ),
-        }
-
-        return vol.Schema(schema)
-
-    async def _create_alarm(
-        self,
-        user_input: dict[str, Any],
-    ) -> ConfigFlowResult:
-        """Create and persist a new alarm."""
-
-        manager = self._get_manager()
-
-        if manager is None:
-            return self.async_abort(
-                reason="manager_not_loaded"
-            )
-
-        config = AlarmConfig(
-            alarm_id=str(
-                uuid.uuid4()
-            ),
-            name=user_input[
-                CONF_NAME
-            ],
-            entity_id=user_input[
-                CONF_ENTITY_ID
-            ],
-            condition=user_input[
-                CONF_CONDITION
-            ],
-            threshold=user_input.get(
-                CONF_THRESHOLD
-            ),
-            severity=user_input[
-                CONF_SEVERITY
-            ],
-            delay=user_input[
-                CONF_DELAY
-            ],
-            hysteresis=user_input[
-                CONF_HYSTERESIS
-            ],
-        )
-
-        await manager.async_add_alarm(
-            config
-        )
-
-        return self._show_main_menu()
+        })
 
     def _get_manager(self):
         """Return the active Alarm Manager."""

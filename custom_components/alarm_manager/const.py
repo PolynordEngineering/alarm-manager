@@ -10,6 +10,21 @@ CONF_THRESHOLD = "threshold"
 CONF_SEVERITY = "severity"
 CONF_DELAY = "delay"
 CONF_HYSTERESIS = "hysteresis"
+CONF_CONDITIONS = "conditions"
+CONF_LOGIC = "logic"
+CONF_CONDITION_TYPE = "condition_type"
+CONF_TIME = "time"
+CONF_START_TIME = "start_time"
+CONF_END_TIME = "end_time"
+
+# Condition groups
+CONDITION_TYPE_ENTITY = "entity"
+CONDITION_TYPE_TIME = "time"
+LOGIC_ALL = "all"
+LOGIC_ANY = "any"
+CONDITION_AFTER = "after"
+CONDITION_BEFORE = "before"
+CONDITION_BETWEEN = "between"
 
 # Conditions
 CONDITION_ABOVE = "above"

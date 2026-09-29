@@ -1,3 +1,14 @@
+trigger_alarm:
+  name: Trigger Alarm
+  description: Manually trigger an Alarm Manager alarm. Useful for alarms without conditions and for external automations.
+  fields:
+    alarm_id:
+      name: Alarm ID
+      description: The unique ID of the alarm to trigger.
+      required: true
+      selector:
+        text:
+
 create_alarm:
   name: Create Alarm
   description: Create a new alarm and start monitoring the selected Home Assistant entity.
@@ -11,9 +22,9 @@ create_alarm:
         text:
 
     entity_id:
-      name: Entity
-      description: The Home Assistant entity that should be monitored.
-      required: true
+      name: Alarm Entity
+      description: The primary Home Assistant entity associated with this alarm. Leave empty for a manual alarm.
+      required: false
       selector:
         entity:
 
@@ -43,6 +54,24 @@ create_alarm:
           max: 100000
           step: 0.1
           mode: box
+
+    conditions:
+      name: Conditions
+      description: Optional list of entity/time conditions. Leave empty for a manually triggered alarm.
+      required: false
+      selector:
+        object:
+
+    logic:
+      name: Logic
+      description: How multiple conditions are combined.
+      required: false
+      default: all
+      selector:
+        select:
+          options:
+            - "all"
+            - "any"
 
     severity:
       name: Severity
@@ -115,3 +144,99 @@ remove_alarm:
       required: true
       selector:
         text:
+update_alarm:
+  name: Update Alarm
+  description: Update an existing Alarm Manager alarm, including its condition group.
+  fields:
+    alarm_id:
+      name: Alarm ID
+      description: The unique ID of the alarm to update.
+      required: true
+      selector:
+        text:
+    name:
+      name: Name
+      description: A descriptive name for the alarm.
+      required: true
+      selector:
+        text:
+    conditions:
+      name: Conditions
+      description: Optional condition group. Leave empty for a manual alarm that does not trigger automatically.
+      required: false
+      selector:
+        object:
+    logic:
+      name: Logic
+      description: How multiple conditions are combined.
+      required: false
+      default: all
+      selector:
+        select:
+          options:
+            - "all"
+            - "any"
+    severity:
+      name: Severity
+      description: Alarm severity.
+      required: false
+      default: warning
+      selector:
+        select:
+          options:
+            - "info"
+            - "warning"
+            - "alarm"
+            - "critical"
+    delay:
+      name: Activation Delay
+      description: Number of seconds the condition group must remain true before activation.
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 3600
+          step: 1
+          mode: box
+    hysteresis:
+      name: Hysteresis
+      description: Hysteresis value.
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 10000
+          step: 0.1
+          mode: box
+
+
+set_default_notification:
+  name: Set Default Notification
+  description: Set the fallback Home Assistant notify service used by Alarm Manager.
+  fields:
+    notification_service:
+      name: Notification Service
+      description: Notify service name without the notify. prefix.
+      required: true
+      selector:
+        text:
+
+
+set_notification_targets:
+  name: Set Notification Targets
+  description: Replace Alarm Manager notification targets and severity routing.
+  fields:
+    targets:
+      name: Targets
+      description: Named Home Assistant notify services.
+      required: true
+      selector:
+        object:
+    routing:
+      name: Severity Routing
+      description: Map of severity names to target names.
+      required: true
+      selector:
+        object:

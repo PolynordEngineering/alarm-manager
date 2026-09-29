@@ -81,6 +81,46 @@ class AlarmHistoryEntity(SensorEntity):
         self.async_write_ha_state()
 
 
+class AlarmNotificationTargetsEntity(SensorEntity):
+    """Expose notification targets to the Alarm Manager frontend."""
+
+    _attr_should_poll = False
+    _attr_name = "Alarm Notification Targets"
+    _attr_icon = "mdi:account-alert"
+    _attr_unique_id = "alarm_manager_notification_targets"
+    _attr_suggested_object_id = "alarm_notification_targets"
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        self.hass = hass
+        self.entry = entry
+
+    @property
+    def native_value(self) -> int:
+        return len(self.entry.options.get("notification_targets", []))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        targets = self.entry.options.get("notification_targets", [])
+        routing = self.entry.options.get("notification_routing", {})
+        return {
+            "targets": list(targets) if isinstance(targets, list) else [],
+            "routing": dict(routing) if isinstance(routing, dict) else {},
+            "default_service": self.entry.options.get("notification_service", "disabled"),
+        }
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass, SIGNAL_ALARM_UPDATED, self._updated
+            )
+        )
+        self.async_write_ha_state()
+
+    @callback
+    def _updated(self, alarm_id: str) -> None:
+        self.async_write_ha_state()
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -168,10 +208,16 @@ async def async_setup_entry(
         manager=manager,
     )
 
+    notification_targets_entity = AlarmNotificationTargetsEntity(
+        hass=hass,
+        entry=entry,
+    )
+
     async_add_entities(
         [
             *existing_entities,
             history_entity,
+            notification_targets_entity,
         ],
         update_before_add=True,
     )

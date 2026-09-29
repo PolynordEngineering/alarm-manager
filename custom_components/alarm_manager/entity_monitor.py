@@ -1,15 +1,19 @@
 """Home Assistant entity monitoring for Alarm Manager."""
 
 from collections.abc import Callable
+from datetime import timedelta
 
 from homeassistant.core import Event, HomeAssistant, callback
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 
 from .manager import AlarmManager
 
 
 class EntityMonitor:
-    """Monitor Home Assistant entities for alarm conditions."""
+    """Monitor Home Assistant entities and time conditions for alarms."""
 
     def __init__(
         self,
@@ -19,77 +23,93 @@ class EntityMonitor:
         """Initialize the entity monitor."""
         self.hass = hass
         self.manager = manager
-        self._listeners: dict[str, Callable[[], None]] = {}
+        self._listeners: dict[str, list[Callable[[], None]]] = {}
 
     async def async_start_monitoring(
         self,
         alarm_id: str,
-        entity_id: str,
+        entity_ids: list[str],
+        has_time_conditions: bool = False,
     ) -> None:
-        """Start monitoring an entity for an alarm."""
-
+        """Start monitoring all sources used by an alarm."""
         if self.manager is None:
             return
+
+        self.stop_monitoring(alarm_id)
+        listeners: list[Callable[[], None]] = []
 
         @callback
         def state_changed(event: Event) -> None:
             """Handle an entity state change."""
-
             if self.manager is None:
                 return
-
-            new_state = event.data.get("new_state")
-
-            if new_state is None:
-                return
-
             self.hass.async_create_task(
-                self.manager.async_evaluate_alarm(
-                    alarm_id=alarm_id,
-                    state=new_state.state,
+                self.manager.async_evaluate_alarm(alarm_id=alarm_id)
+            )
+
+        if entity_ids:
+            listeners.append(
+                async_track_state_change_event(
+                    self.hass,
+                    entity_ids,
+                    state_changed,
                 )
             )
 
-        unsubscribe = async_track_state_change_event(
-            self.hass,
-            [entity_id],
-            state_changed,
-        )
+        if has_time_conditions:
+            @callback
+            def time_changed(now) -> None:
+                """Re-evaluate time conditions periodically."""
+                if self.manager is None:
+                    return
+                self.hass.async_create_task(
+                    self.manager.async_evaluate_alarm(alarm_id=alarm_id)
+                )
 
-        existing_listener = self._listeners.get(alarm_id)
-
-        if existing_listener is not None:
-            existing_listener()
-
-        self._listeners[alarm_id] = unsubscribe
-
-        # Evaluate the current entity state immediately.
-        current_state = self.hass.states.get(entity_id)
-
-        if current_state is not None:
-            await self.manager.async_evaluate_alarm(
-                alarm_id=alarm_id,
-                state=current_state.state,
+            listeners.append(
+                async_track_time_interval(
+                    self.hass,
+                    time_changed,
+                    timedelta(seconds=30),
+                )
             )
 
-    def stop_monitoring(
-        self,
-        alarm_id: str,
-    ) -> None:
-        """Stop monitoring an alarm."""
+        # State-change events are the primary evaluation path. This short
+        # reconciliation interval is a safety net for entities that are
+        # restored/updated without producing a normal state_changed event.
+        # It guarantees that an alarm cannot remain active indefinitely after
+        # its condition has returned to normal.
+        @callback
+        def reconcile(now) -> None:
+            if self.manager is None:
+                return
+            self.hass.async_create_task(
+                self.manager.async_evaluate_alarm(alarm_id=alarm_id)
+            )
 
-        unsubscribe = self._listeners.pop(
-            alarm_id,
-            None,
+        listeners.append(
+            async_track_time_interval(
+                self.hass,
+                reconcile,
+                timedelta(seconds=2),
+            )
         )
 
-        if unsubscribe is not None:
+        self._listeners[alarm_id] = listeners
+
+        # Evaluate immediately so a newly-created alarm reflects the
+        # current Home Assistant state without waiting for an event.
+        await self.manager.async_evaluate_alarm(alarm_id=alarm_id)
+
+    def stop_monitoring(self, alarm_id: str) -> None:
+        """Stop monitoring an alarm."""
+        listeners = self._listeners.pop(alarm_id, [])
+        for unsubscribe in listeners:
             unsubscribe()
 
     def stop_all(self) -> None:
         """Stop monitoring all alarms."""
-
-        for unsubscribe in self._listeners.values():
-            unsubscribe()
-
+        for listeners in self._listeners.values():
+            for unsubscribe in listeners:
+                unsubscribe()
         self._listeners.clear()

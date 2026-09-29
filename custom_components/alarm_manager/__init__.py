@@ -38,10 +38,9 @@ async def async_setup(
         hass
     )
 
-    await async_register_panel(
-        hass
-    )
-
+    # Panels are registered with the config entry lifecycle below so they
+    # survive config-entry reloads (for example when notification settings
+    # are saved from the Alarm Manager UI).
     return True
 
 
@@ -64,6 +63,11 @@ async def async_setup_entry(
 
     await manager.async_load()
 
+    # Register the sidebar panels for this active config entry. Keeping this
+    # in setup_entry means a config-entry reload recreates the panels instead
+    # of leaving the user on the Home Assistant dashboard.
+    await async_register_panel(hass)
+
     hass.data.setdefault(
         DOMAIN,
         {},
@@ -85,7 +89,8 @@ async def async_setup_entry(
 
         await monitor.async_start_monitoring(
             alarm_id=alarm.alarm_id,
-            entity_id=alarm.entity_id,
+            entity_ids=alarm.entity_ids,
+            has_time_conditions=alarm.has_time_conditions,
         )
 
         add_alarm_entity = hass.data[
@@ -112,7 +117,8 @@ async def async_setup_entry(
 
         await monitor.async_start_monitoring(
             alarm_id=alarm.alarm_id,
-            entity_id=alarm.entity_id,
+            entity_ids=alarm.entity_ids,
+            has_time_conditions=alarm.has_time_conditions,
         )
 
     async def alarm_removed(
@@ -155,7 +161,8 @@ async def async_setup_entry(
     for alarm in manager.alarms.values():
         await monitor.async_start_monitoring(
             alarm_id=alarm.alarm_id,
-            entity_id=alarm.entity_id,
+            entity_ids=alarm.entity_ids,
+            has_time_conditions=alarm.has_time_conditions,
         )
 
     return True

@@ -13,7 +13,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .alarm import Alarm
 from .alarm_config import AlarmConfig
-from .condition import evaluate_condition
+from .condition import evaluate_alarm_conditions, evaluate_condition
 from .const import (
     DOMAIN,
     SIGNAL_ALARM_UPDATED,
@@ -46,6 +46,8 @@ class AlarmManager:
         self._history: list[dict[str, Any]] = []
 
         self._pending_tasks: dict[str, asyncio.Task] = {}
+        self._condition_delay_tasks: dict[str, asyncio.Task] = {}
+        self._condition_runtime: dict[str, dict[str, dict[str, Any]]] = {}
 
         self._alarm_created_callback: Callback | None = None
         self._alarm_removed_callback: Callback | None = None
@@ -83,12 +85,16 @@ class AlarmManager:
             {},
         ).items():
             try:
-                self._alarms[alarm_id] = (
-                    self._alarm_from_storage(
-                        alarm_id,
-                        raw,
-                    )
+                alarm = self._alarm_from_storage(
+                    alarm_id,
+                    raw,
                 )
+                # Keep the legacy display/compatibility fields synchronized
+                # with the primary condition stored in the newer conditions
+                # model. Older stored alarms can otherwise retain a stale
+                # threshold (for example 1) while the editor shows 29.
+                self._sync_primary_condition_fields(alarm)
+                self._alarms[alarm_id] = alarm
             except (TypeError, ValueError):
                 continue
 
@@ -194,14 +200,40 @@ class AlarmManager:
 
         title = f"🚨 {alarm.name}"
 
-        message = (
-            "### ALARM — ACTIVE\n\n"
-            f"**Value:** `{alarm.trigger_value}`  \n"
-            f"**Condition:** `{alarm.condition}`  \n"
-            f"**Limit:** `{alarm.threshold}`  \n"
-            f"**Severity:** **{alarm.severity.upper()}**  \n\n"
-            "[**OPEN ALARM MANAGER →**](/alarm-manager)"
-        )
+        if alarm.conditions:
+            condition_lines = []
+            for item in alarm.normalized_conditions:
+                if item.get("type") == "time":
+                    description = (
+                        f"time {item.get('condition')} "
+                        f"{item.get('start_time') or item.get('time')}"
+                    )
+                    if item.get("end_time"):
+                        description += f"–{item['end_time']}"
+                else:
+                    description = (
+                        f"{item.get('entity_id')} "
+                        f"{item.get('condition')} "
+                        f"{item.get('threshold', '')}"
+                    )
+                condition_lines.append(f"- `{description}`")
+
+            message = (
+                "### ALARM — ACTIVE\n\n"
+                f"**Logic:** **{alarm.logic.upper()}**  \n"
+                f"**Conditions:**\n{chr(10).join(condition_lines)}\n\n"
+                f"**Severity:** **{alarm.severity.upper()}**  \n\n"
+                "[**OPEN ALARM MANAGER →**](/alarm-manager)"
+            )
+        else:
+            message = (
+                "### ALARM — ACTIVE\n\n"
+                f"**Value:** `{alarm.trigger_value}`  \n"
+                f"**Condition:** `{alarm.condition}`  \n"
+                f"**Limit:** `{alarm.threshold}`  \n"
+                f"**Severity:** **{alarm.severity.upper()}**  \n\n"
+                "[**OPEN ALARM MANAGER →**](/alarm-manager)"
+            )
 
         await self.hass.services.async_call(
             "persistent_notification",
@@ -231,7 +263,10 @@ class AlarmManager:
                 {
                     "title": f"🚨 {alarm.name}",
                     "message": (
-                        f"Alarm active: {alarm.trigger_value} "
+                        f"Alarm active: {alarm.name} "
+                        f"[{alarm.severity.upper()}]"
+                        if alarm.conditions
+                        else f"Alarm active: {alarm.trigger_value} "
                         f"({alarm.condition} {alarm.threshold})"
                     ),
                     "data": {
@@ -252,6 +287,8 @@ class AlarmManager:
         severity: str | None = None,
         delay: int = 0,
         hysteresis: float = 0.0,
+        conditions: list[dict[str, Any]] | None = None,
+        logic: str = "all",
     ) -> Alarm:
         """Add and persist a new alarm."""
 
@@ -263,6 +300,8 @@ class AlarmManager:
             severity = config.severity
             delay = config.delay
             hysteresis = config.hysteresis
+            conditions = config.conditions
+            logic = config.logic
 
             alarm_id = (
                 config.alarm_id
@@ -282,8 +321,11 @@ class AlarmManager:
             hysteresis=float(
                 hysteresis or 0.0
             ),
+            conditions=list(conditions or []),
+            logic=logic or "all",
         )
 
+        self._sync_primary_condition_fields(alarm)
         self._alarms[alarm.alarm_id] = alarm
 
         await self.async_save()
@@ -311,6 +353,8 @@ class AlarmManager:
         severity: str | None = None,
         delay: int = 0,
         hysteresis: float = 0.0,
+        conditions: list[dict[str, Any]] | None = None,
+        logic: str = "all",
     ) -> Alarm | None:
         """Update an existing alarm."""
 
@@ -323,6 +367,8 @@ class AlarmManager:
             severity = config.severity
             delay = config.delay
             hysteresis = config.hysteresis
+            conditions = config.conditions
+            logic = config.logic
 
         if not alarm_id:
             return None
@@ -355,6 +401,25 @@ class AlarmManager:
         alarm.hysteresis = float(
             hysteresis or 0.0
         )
+
+        if conditions is not None:
+            self._cancel_condition_delay(alarm_id)
+            self._condition_runtime.pop(alarm_id, None)
+            alarm.conditions = list(conditions)
+            # The primary alarm entity is now independent from the optional
+            # condition group. Keep an explicitly supplied entity_id.
+            # For legacy callers that only provide conditions, use the first
+            # entity condition as a backwards-compatible fallback.
+            if not alarm.entity_id:
+                first_entity = next(
+                    (item.get("entity_id") for item in alarm.conditions
+                     if item.get("type", "entity") == "entity" and item.get("entity_id")),
+                    "",
+                )
+                alarm.entity_id = first_entity
+
+        alarm.logic = logic or "all"
+        self._sync_primary_condition_fields(alarm)
 
         await self.async_save()
 
@@ -393,6 +458,8 @@ class AlarmManager:
         self._cancel_pending_activation(
             alarm_id
         )
+        self._cancel_condition_delay(alarm_id)
+        self._condition_runtime.pop(alarm_id, None)
 
         self._alarms.pop(
             alarm_id,
@@ -410,6 +477,26 @@ class AlarmManager:
             alarm_id
         )
 
+        return True
+
+    async def async_trigger_alarm(
+        self,
+        alarm_id: str,
+    ) -> bool:
+        """Manually trigger an alarm, including alarms without conditions."""
+        alarm = self._alarms.get(alarm_id)
+        if alarm is None:
+            return False
+
+        # A manual trigger starts a new occurrence using the same lifecycle
+        # and notification path as a condition-triggered alarm.
+        if alarm.state in (STATE_ACTIVE, STATE_ACKNOWLEDGED):
+            return True
+
+        alarm.last_value = None
+        alarm.condition_snapshot = {}
+        await self._handle_triggered(alarm)
+        self._notify_alarm_updated(alarm_id)
         return True
 
     async def async_acknowledge_alarm(
@@ -440,6 +527,14 @@ class AlarmManager:
             self._notify_alarm_updated(
                 alarm_id
             )
+
+            # Re-evaluate immediately after acknowledgement. This handles
+            # the case where the condition has already returned to normal
+            # before the operator acknowledges the alarm. Without this
+            # check, an acknowledged alarm can remain in Current Alarms
+            # until a later state update or an edit/save operation triggers
+            # another evaluation.
+            await self.async_evaluate_alarm(alarm_id=alarm_id)
 
             return True
 
@@ -580,38 +675,95 @@ class AlarmManager:
 
         self._notify_history_updated()
 
+    def _sync_primary_condition_fields(self, alarm: Alarm) -> None:
+        """Keep legacy fields aligned with the primary entity condition.
+
+        The frontend and older service consumers still expose ``condition``
+        and ``threshold`` as top-level alarm attributes. The visual editor
+        stores the richer definition in ``conditions``, so mirror the first
+        entity condition into the legacy fields for display and compatibility.
+        """
+        conditions = alarm.conditions or []
+        primary = None
+        if alarm.entity_id:
+            primary = next(
+                (item for item in conditions
+                 if item.get("type", "entity") == "entity"
+                 and item.get("entity_id") == alarm.entity_id),
+                None,
+            )
+        if primary is None:
+            primary = next(
+                (item for item in conditions
+                 if item.get("type", "entity") == "entity"),
+                None,
+            )
+        if primary is None:
+            return
+
+        alarm.entity_id = str(primary.get("entity_id") or alarm.entity_id or "")
+        alarm.condition = str(primary.get("condition") or alarm.condition or "above")
+        alarm.threshold = primary.get("threshold")
+
     async def async_evaluate_alarm(
         self,
         alarm_id: str,
-        state: Any,
+        state: Any = None,
     ) -> None:
-        """Evaluate an alarm against an entity state."""
+        """Evaluate all conditions for an alarm."""
 
         alarm = self._alarms.get(alarm_id)
-
         if alarm is None:
             return
 
-        alarm.last_value = state
+        conditions = alarm.normalized_conditions
+        if not conditions:
+            # A conditionless alarm is intentionally manual.
+            # It can be activated by the trigger_alarm service.
+            alarm.condition_snapshot = {}
+            self._notify_alarm_updated(alarm_id)
+            return
 
-        triggered = evaluate_condition(
-            state,
-            alarm.condition,
-            alarm.threshold,
-        )
+        next_delay = None
+        if not alarm.conditions and state is not None and len(conditions) == 1:
+            item = conditions[0]
+            triggered = evaluate_condition(
+                state,
+                item.get("condition", alarm.condition),
+                item.get("threshold", alarm.threshold),
+            )
+            snapshot = {
+                alarm.entity_id: {
+                    "type": "entity",
+                    "state": state,
+                    "condition": alarm.condition,
+                    "threshold": alarm.threshold,
+                    "result": triggered,
+                }
+            }
+        else:
+            triggered, snapshot, next_delay = evaluate_alarm_conditions(
+                self.hass,
+                conditions,
+                alarm.logic,
+                self._condition_runtime.setdefault(alarm_id, {}),
+            )
+
+        alarm.condition_snapshot = snapshot
+        self._schedule_condition_delay(alarm_id, next_delay)
+
+        if alarm.entity_ids:
+            first_state = self.hass.states.get(alarm.entity_ids[0])
+            alarm.last_value = (
+                first_state.state if first_state is not None else None
+            )
 
         if triggered:
-            await self._handle_triggered(
-                alarm
-            )
+            await self._handle_triggered(alarm)
         else:
-            await self._handle_normal(
-                alarm
-            )
+            await self._handle_normal(alarm)
 
-        self._notify_alarm_updated(
-            alarm_id
-        )
+        self._notify_alarm_updated(alarm_id)
 
     async def _handle_triggered(
         self,
@@ -764,18 +916,21 @@ class AlarmManager:
             if alarm is None:
                 return
 
-            current_state = self.hass.states.get(
-                alarm.entity_id
+            triggered, snapshot, next_delay = evaluate_alarm_conditions(
+                self.hass,
+                alarm.normalized_conditions,
+                alarm.logic,
+                self._condition_runtime.setdefault(alarm_id, {}),
             )
 
-            if current_state is None:
-                return
+            alarm.condition_snapshot = snapshot
+            self._schedule_condition_delay(alarm_id, next_delay)
 
-            triggered = evaluate_condition(
-                current_state.state,
-                alarm.condition,
-                alarm.threshold,
-            )
+            if alarm.entity_ids:
+                current_state = self.hass.states.get(alarm.entity_ids[0])
+                alarm.last_value = (
+                    current_state.state if current_state is not None else None
+                )
 
             if not triggered:
                 return
@@ -803,6 +958,44 @@ class AlarmManager:
                 None,
             )
 
+    def _schedule_condition_delay(
+        self,
+        alarm_id: str,
+        delay: float | None,
+    ) -> None:
+        """Schedule a re-evaluation when a condition delay expires."""
+        current_task = asyncio.current_task()
+        existing = self._condition_delay_tasks.get(alarm_id)
+        if existing is not None and existing is not current_task:
+            self._condition_delay_tasks.pop(alarm_id, None)
+            existing.cancel()
+
+        if delay is None or delay <= 0:
+            if existing is current_task:
+                self._condition_delay_tasks.pop(alarm_id, None)
+            return
+
+        async def _wait_and_evaluate() -> None:
+            try:
+                await asyncio.sleep(delay)
+                if alarm_id in self._alarms:
+                    await self.async_evaluate_alarm(alarm_id=alarm_id)
+            except asyncio.CancelledError:
+                raise
+            finally:
+                if self._condition_delay_tasks.get(alarm_id) is asyncio.current_task():
+                    self._condition_delay_tasks.pop(alarm_id, None)
+
+        self._condition_delay_tasks[alarm_id] = self.hass.async_create_task(
+            _wait_and_evaluate()
+        )
+
+    def _cancel_condition_delay(self, alarm_id: str) -> None:
+        """Cancel a pending condition-delay re-evaluation."""
+        task = self._condition_delay_tasks.pop(alarm_id, None)
+        if task is not None:
+            task.cancel()
+
     def _cancel_pending_activation(
         self,
         alarm_id: str,
@@ -825,6 +1018,12 @@ class AlarmManager:
 
         self._pending_tasks.clear()
 
+        for task in self._condition_delay_tasks.values():
+            task.cancel()
+
+        self._condition_delay_tasks.clear()
+        self._condition_runtime.clear()
+
     def _add_history_record(
         self,
         alarm: Alarm,
@@ -837,6 +1036,9 @@ class AlarmManager:
             "entity_id": alarm.entity_id,
             "condition": alarm.condition,
             "threshold": alarm.threshold,
+            "conditions": list(alarm.normalized_conditions),
+            "logic": alarm.logic,
+            "condition_snapshot": dict(alarm.condition_snapshot),
             "severity": alarm.severity,
             "trigger_value": alarm.trigger_value,
             "last_value": alarm.last_value,
@@ -989,6 +1191,8 @@ class AlarmManager:
                 )
                 or 0.0
             ),
+            conditions=list(raw.get("conditions", []) or []),
+            logic=str(raw.get("logic", "all") or "all"),
             state=state,
             activated_at=self._parse_datetime(
                 raw.get(
@@ -1017,6 +1221,7 @@ class AlarmManager:
             trigger_value=raw.get(
                 "trigger_value"
             ),
+            condition_snapshot=dict(raw.get("condition_snapshot", {}) or {}),
         )
 
     def _alarm_to_storage(
@@ -1033,6 +1238,9 @@ class AlarmManager:
             "severity": alarm.severity,
             "delay": alarm.delay,
             "hysteresis": alarm.hysteresis,
+            "conditions": list(alarm.normalized_conditions) if alarm.conditions else [],
+            "logic": alarm.logic,
+            "condition_snapshot": dict(alarm.condition_snapshot),
             "state": alarm.state,
             "activated_at": self._datetime_to_string(
                 alarm.activated_at

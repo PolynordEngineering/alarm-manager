@@ -22,10 +22,8 @@
         "title": "Add Alarm",
         "data": {
           "name": "Name",
-          "entity_id": "Entity",
-          "condition": "Condition",
-          "threshold": "Threshold",
           "severity": "Severity",
+          "logic": "Logic",
           "delay": "Activation Delay",
           "hysteresis": "Hysteresis"
         }
@@ -40,10 +38,8 @@
         "title": "Edit Alarm",
         "data": {
           "name": "Name",
-          "entity_id": "Entity",
-          "condition": "Condition",
-          "threshold": "Threshold",
           "severity": "Severity",
+          "logic": "Logic",
           "delay": "Activation Delay",
           "hysteresis": "Hysteresis"
         }
@@ -115,6 +111,36 @@
         "description": "Configure the default Home Assistant notification service. This is used when no notification targets are configured.",
         "data": {
           "notification_service": "Mobile notification service"
+        }
+      },
+      "condition_menu": {
+        "title": "Alarm Conditions",
+        "description": "{summary}",
+        "menu_options": {
+          "add_condition": "Add Condition",
+          "finish_alarm": "Create Alarm"
+        }
+      },
+      "add_condition": {
+        "title": "Add Condition",
+        "data": {
+          "condition_type": "Condition type"
+        }
+      },
+      "add_entity_condition": {
+        "title": "Entity Condition",
+        "data": {
+          "entity_id": "Entity",
+          "condition": "Condition",
+          "threshold": "Threshold"
+        }
+      },
+      "add_time_condition": {
+        "title": "Time Condition",
+        "data": {
+          "condition": "Time condition",
+          "start_time": "Start time",
+          "end_time": "End time"
         }
       }
     }
