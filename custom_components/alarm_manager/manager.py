@@ -581,6 +581,23 @@ class AlarmManager:
 
         return True
 
+    async def async_clear_alarm(self, alarm_id: str) -> bool:
+        """Clear an inactive alarm without recording an acknowledgement.
+
+        The occurrence has already been written to history when the alarm
+        transitioned from ACTIVE to INACTIVE. Clearing here only removes the
+        latched current-alarm state; the history record deliberately remains
+        unacknowledged.
+        """
+        alarm = self._alarms.get(alarm_id)
+        if alarm is None or alarm.state != STATE_INACTIVE:
+            return False
+
+        alarm.reset()
+        await self.async_save()
+        self._notify_alarm_updated(alarm_id)
+        return True
+
     async def async_acknowledge_all(
         self,
         user_id: str | None = None,

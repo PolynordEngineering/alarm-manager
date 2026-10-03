@@ -129,6 +129,18 @@ acknowledge_all:
   description: Acknowledge all currently active and unacknowledged alarms.
 
 
+clear_alarm:
+  name: Clear Alarm
+  description: Clear an inactive, unacknowledged alarm from Current Alarms without recording an acknowledgement.
+  fields:
+    alarm_id:
+      name: Alarm ID
+      description: The unique ID of the inactive alarm to clear.
+      required: true
+      selector:
+        text:
+
+
 clear_history:
   name: Clear Alarm History
   description: Permanently clear all completed alarm occurrences from Alarm Manager history.

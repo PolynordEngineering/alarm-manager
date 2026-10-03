@@ -31,6 +31,16 @@ class AlarmManagerPanel extends HTMLElement {
             return;
           }
 
+          if (button.classList.contains("clear-alarm-button")) {
+            const alarmId = button.dataset.alarmId;
+
+            if (alarmId) {
+              await this._clearAlarm(alarmId);
+            }
+
+            return;
+          }
+
           if (button.classList.contains("ack-button")) {
             const alarmId = button.dataset.alarmId;
 
@@ -849,7 +859,7 @@ class AlarmManagerPanel extends HTMLElement {
           <div class="automation-editor-body">
             <section class="automation-section">
               <h2>Alarm</h2>
-              <p>Start with the alarm name and the entity/state that represents the alarm. Additional logic is optional.</p>
+              <p>Give the alarm a name and choose how important it is. The trigger is defined below.</p>
               <div class="automation-card alarm-settings-card">
                 <label class="automation-name-field"><span>ALARM NAME</span><input type="text" value="${this._escape(this._builder.name)}" data-builder-field="name" placeholder="Garage Door Open" autocomplete="off"></label>
                 <label><span>SEVERITY</span><select data-builder-field="severity">
@@ -858,20 +868,18 @@ class AlarmManagerPanel extends HTMLElement {
                   <option value="alarm" ${this._builder.severity === "alarm" ? "selected" : ""}>Alarm</option>
                   <option value="critical" ${this._builder.severity === "critical" ? "selected" : ""}>Critical</option>
                 </select></label>
-                <label><span>ACTIVATION DELAY</span><input type="number" min="0" step="1" value="${this._escape(this._builder.delay)}" data-builder-field="delay" inputmode="numeric"></label>
-                <label><span>HYSTERESIS</span><input type="number" min="0" step="0.1" value="${this._escape(this._builder.hysteresis)}" data-builder-field="hysteresis" inputmode="decimal"></label>
               </div>
             </section>
 
             <section class="automation-section">
               <h2>When</h2>
-              <p>The alarm entity is the primary condition. Add more conditions only when you need extra logic.</p>
+              <p>This is the main condition that defines when the alarm should trigger. Add additional conditions only when you need extra logic.</p>
               <article class="automation-block primary-condition-block">
                 <div class="automation-block-top">
                   <div class="automation-block-title">
                     <div class="automation-block-icon">◉</div>
                     <div>
-                      <div class="automation-block-kicker">ALARM ENTITY</div>
+                      <div class="automation-block-kicker">PRIMARY ALARM TRIGGER</div>
                       <div class="automation-block-name">${this._escape(this._hass?.states?.[primary.entity_id]?.attributes?.friendly_name || primary.entity_id || "Choose the alarm entity")}</div>
                     </div>
                   </div>
@@ -888,10 +896,17 @@ class AlarmManagerPanel extends HTMLElement {
 
             <section class="automation-section">
               <h2>Then do</h2>
-              <p>When the primary alarm entity and optional logic are satisfied, Alarm Manager activates the alarm lifecycle.</p>
+              <p>When the trigger logic is satisfied, Alarm Manager waits for this activation delay and then activates the alarm.</p>
               <div class="automation-card action-block">
                 <div class="action-icon">🚨</div>
-                <div class="action-main"><div class="action-title">Activate alarm</div><div class="action-description">${this._escape(this._builder.name || "Alarm")} · ${this._escape(String(this._builder.severity).toUpperCase())}</div></div>
+                <div class="action-main">
+                  <div class="action-title">Activate alarm</div>
+                  <div class="action-description">${this._escape(this._builder.name || "Alarm")} · ${this._escape(String(this._builder.severity).toUpperCase())}</div>
+                </div>
+                <label class="action-delay-field">
+                  <span>ACTIVATION DELAY (SECONDS)</span>
+                  <input type="number" min="0" step="1" value="${this._escape(this._builder.delay)}" data-builder-field="delay" inputmode="numeric">
+                </label>
                 ${!hasPrimaryEntity && this._builder.alarmId ? `<button type="button" class="builder-trigger-now action-trigger">TRIGGER NOW</button>` : ""}
               </div>
             </section>
@@ -1011,6 +1026,18 @@ class AlarmManagerPanel extends HTMLElement {
     });
     this._notificationSettings = null;
     this._render();
+  }
+
+  async _clearAlarm(alarmId) {
+    if (!this._hass || !alarmId) {
+      return;
+    }
+
+    await this._hass.callService(
+      "alarm_manager",
+      "clear_alarm",
+      { alarm_id: alarmId }
+    );
   }
 
   async _acknowledge(alarmId) {
@@ -1346,7 +1373,7 @@ class AlarmManagerPanel extends HTMLElement {
             inactive
               ? `
                   <button
-                    class="ack-button"
+                    class="clear-alarm-button"
                     data-alarm-id="${alarmId}"
                     ${
                       alarmId
@@ -1354,7 +1381,7 @@ class AlarmManagerPanel extends HTMLElement {
                         : "disabled"
                     }
                   >
-                    ACK
+                    CLEAR
                   </button>
                 `
               : acknowledged

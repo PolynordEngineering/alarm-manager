@@ -2,6 +2,35 @@
 
 All notable changes to Alarm Manager are documented here.
 
+## [0.2.1] - 2026-10-03
+
+### Added
+
+- Added `alarm_manager.clear_alarm` to clear an inactive, unacknowledged alarm without recording an acknowledgement.
+
+### Improved
+
+- Changed the Current Alarms action for inactive, unacknowledged alarms from **ACK** to **CLEAR**.
+- Preserved **NOT ACKED** in history when an inactive alarm is cleared without acknowledgement.
+- Reworked the Add/Edit Alarm editor so the primary alarm trigger is clearly separated from optional additional conditions.
+- Removed the duplicate top-level hysteresis field from the editor.
+- Moved **Activation Delay** into the **Then do → Activate alarm** section.
+- Kept condition delay and condition hysteresis with the individual primary/additional condition where they belong.
+- Removed the separate **Notifications** sidebar item; notification targets and routing remain available inside Alarm Manager.
+- Bumped the frontend cache version to ensure the updated panel is loaded after upgrade.
+
+### Fixed
+
+- Fixed the misleading inactive-alarm action that could cause an operator to record an acknowledgement merely to remove an already-inactive alarm from Current Alarms.
+- Fixed the editor layout ambiguity around the primary alarm entity and the two different types of delay.
+
+### Notes
+
+- v0.2.1 is a refinement release following v0.2.0.
+- Existing v0.2.0 alarm configurations remain supported.
+- The separate Notifications panel route is no longer registered in the Home Assistant sidebar.
+
+
 ## [0.2.0] - 2026-09-28
 
 ### Added
