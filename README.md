@@ -6,9 +6,9 @@ Alarm Manager adds a dedicated alarm layer to Home Assistant for users who want 
 
 ![Alarm Manager](docs/images/alarm-panel.png)
 
-## ✨ What is new in v0.2.1
+## ✨ What is new in v0.2.0
 
-Version **0.2.1** refines the v0.2.0 alarm model with a clearer editor, cleaner alarm lifecycle controls and a simpler Home Assistant sidebar.
+Version **0.2.0** is a major UI and alarm-engine update focused on making Alarm Manager easier to configure while adding more advanced alarm logic.
 
 - 🧩 **Automation-style alarm editor** — create and edit alarms from the Alarm Manager sidebar without navigating through Home Assistant Integrations.
 - 🎯 **Primary alarm entity** — define the entity and its state/threshold first, then add optional additional conditions.
@@ -17,16 +17,14 @@ Version **0.2.1** refines the v0.2.0 alarm model with a clearer editor, cleaner 
 - ⏱️ **Per-condition delay** — require an individual condition to remain true for a configured period.
 - ↔️ **Per-condition hysteresis** — reduce chatter around individual numeric limits.
 - 🚨 **Conditionless/manual alarms** — create alarms without automatic conditions and trigger them from automations, scripts or PLC workflows.
-- 🔔 **Notification targets inside Alarm Manager** — manage notification services, targets and severity routing without a separate sidebar item.
+- 🔔 **Dedicated Notifications page** — manage notification services and targets from the Alarm Manager sidebar.
 - 👥 **Notification targets and severity routing** — route Info, Warning, Alarm and Critical notifications to different targets.
 - 📱 **Mobile-friendly UI** — safe-area handling and mobile navigation support.
 - 🗂️ **History severity filtering** — filter completed alarm occurrences by severity.
 - 👤 **Acknowledgement tracking** — record the Home Assistant user who acknowledged an alarm.
-- 🧹 **Clear inactive alarms** — clear an unacknowledged inactive alarm from Current Alarms without falsely recording an acknowledgement.
-- 🧭 **Clearer alarm editor** — separates the primary trigger, additional conditions and activation delay into distinct sections.
 - 🔄 **Improved condition reconciliation** — alarm state is re-evaluated so stale active occurrences can clear correctly.
 
-> **v0.2.1 is the current release target for this repository.**
+> **v0.2.0 is a development release candidate for the new alarm model.** Test it in your environment before deploying it to production systems.
 
 ---
 
@@ -50,7 +48,7 @@ The integration is local and works with entities already available in Home Assis
 
 ## 🖥️ One place to manage alarms
 
-Alarm Manager v0.2.1 moves day-to-day alarm configuration into its own Home Assistant sidebar experience.
+Alarm Manager v0.2.0 moves day-to-day alarm configuration into its own Home Assistant sidebar experience.
 
 ### Alarm Manager
 
@@ -64,9 +62,9 @@ Use the **Alarm Manager** sidebar entry to:
 - Review history
 - Filter history by severity
 
-### Notification Targets
+### Notifications
 
-Notification configuration is managed directly inside the **Alarm Manager** panel:
+Use the dedicated **Notifications** sidebar entry to:
 
 - Configure the default notification service
 - Add notification targets
@@ -74,13 +72,11 @@ Notification configuration is managed directly inside the **Alarm Manager** pane
 - Delete notification targets
 - Configure severity routing
 
-The separate **Notifications** sidebar entry is no longer registered.
-
 The Home Assistant integration configuration remains available for integration-level management, but normal alarm operation no longer requires repeatedly navigating through **Settings → Devices & services**.
 
-![Alarm Manager v0.2.1](docs/images/alarm-panel.png)
+![Alarm Manager v0.2.0](docs/images/alarm-panel.png)
 
-*Alarm Manager v0.2.1: current alarms, notification targets and history in one place.*
+*Alarm Manager v0.2.0: current alarms, notification targets and history in one place.*
 
 ---
 
@@ -92,26 +88,24 @@ The alarm editor is designed around a simple flow:
 ALARM
   │
   ├── Name
-  └── Severity
+  ├── Primary entity
+  ├── Severity
+  ├── Activation delay
+  └── Hysteresis
 
 WHEN
   │
-  ├── Primary alarm trigger
-  │   ├── Entity
-  │   ├── State / threshold
-  │   ├── Condition delay
-  │   └── Condition hysteresis
+  ├── Primary entity condition
   │
   ├── AND / OR
-  └── Additional conditions
+  ├── Additional condition
+  ├── AND / OR
+  └── Additional condition
 
-THEN DO
+THEN
   │
-  ├── Activate alarm
-  └── Activation delay
+  └── Alarm becomes active
 ```
-
-The primary alarm trigger is clearly separated from optional additional conditions. The **condition delay** controls an individual condition; the **activation delay** controls the final alarm activation after the complete trigger logic is satisfied.
 
 A simple alarm can contain only a primary entity condition.
 
@@ -121,7 +115,7 @@ A manual alarm can have **no automatic conditions at all** and can be triggered 
 
 ![Add Alarm editor](docs/images/add-alarm.png)
 
-*Alarm editor with a clear primary trigger, optional additional conditions and a separate activation delay.*
+*Automation-style alarm editor with a primary alarm entity and optional additional logic.*
 
 ---
 
@@ -292,15 +286,6 @@ Alarm Manager supports four severity levels:
 The exact operational meaning is defined by your installation's alarm philosophy.
 
 ---
-
-## 🚨 Alarm acknowledgement and clearing
-
-Alarm Manager distinguishes between **acknowledging an active alarm** and **clearing an inactive alarm**.
-
-- **ACK** is used while the alarm is active. It records that an operator has acknowledged the occurrence and, when supported by Home Assistant user context, records who acknowledged it.
-- When the underlying condition returns to normal before acknowledgement, the occurrence becomes **INACTIVE** and remains in Current Alarms so it cannot be silently forgotten.
-- **CLEAR** is then used to remove that inactive occurrence from Current Alarms **without adding an acknowledgement**. The history record therefore correctly remains **NOT ACKED**.
-- An alarm that is acknowledged while active can subsequently clear normally and is recorded as acknowledged in history.
 
 ## 🔔 Notifications
 
@@ -491,9 +476,9 @@ Additional UI captures, including severity routing and mobile notifications, are
 
 ---
 
-## 🧪 v0.2.1 testing status
+## 🧪 v0.2.0 testing status
 
-v0.2.1 refines the v0.2.0 alarm model with lifecycle and editor improvements. The release should be tested for alarm creation, acknowledgement, clearing, notifications and persistence before production use.
+v0.2.0 has been developed through a series of beta builds covering the new editor, multi-condition alarms, notifications, mobile UI, history filtering and alarm-state reconciliation.
 
 Before calling the release production-ready, test at minimum:
 
@@ -535,7 +520,7 @@ Suggestions and practical use cases are welcome.
 
 ## 📄 License
 
-Alarm Manager v0.2.1 and later are licensed under the **PolyForm Noncommercial License 1.0.0**.
+Alarm Manager v0.2.0 and later are licensed under the **PolyForm Noncommercial License 1.0.0**.
 
 You may use, inspect, modify, and distribute the software for permitted **noncommercial** purposes, subject to the license terms.
 
