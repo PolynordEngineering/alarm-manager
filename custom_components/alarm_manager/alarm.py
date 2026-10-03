@@ -1,10 +1,12 @@
 """Alarm object for Alarm Manager."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
 from .const import (
+    CONDITION_TYPE_ENTITY,
+    CONDITION_TYPE_TIME,
     STATE_ACTIVE,
     STATE_ACKNOWLEDGED,
     STATE_INACTIVE,
@@ -29,6 +31,8 @@ class Alarm:
     severity: str = "warning"
     delay: int = 0
     hysteresis: float = 0.0
+    conditions: list[dict[str, Any]] = field(default_factory=list)
+    logic: str = "all"
 
     state: str = STATE_NORMAL
 
@@ -40,13 +44,53 @@ class Alarm:
 
     last_value: Any = None
     trigger_value: Any = None
+    condition_snapshot: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def normalized_conditions(self) -> list[dict[str, Any]]:
+        """Return conditions, converting legacy alarms to one entity condition."""
+        if self.conditions:
+            return self.conditions
+
+        if not self.entity_id:
+            return []
+
+        return [
+            {
+                "type": CONDITION_TYPE_ENTITY,
+                "entity_id": self.entity_id,
+                "condition": self.condition,
+                "threshold": self.threshold,
+            }
+        ]
+
+    @property
+    def entity_ids(self) -> list[str]:
+        """Return the primary alarm entity plus entities used by conditions."""
+        entity_ids: list[str] = []
+        if self.entity_id:
+            entity_ids.append(str(self.entity_id))
+
+        entity_ids.extend(
+            str(item.get("entity_id"))
+            for item in self.normalized_conditions
+            if item.get("type", CONDITION_TYPE_ENTITY) == CONDITION_TYPE_ENTITY
+            and item.get("entity_id")
+        )
+        return list(dict.fromkeys(entity_ids))
+
+    @property
+    def has_time_conditions(self) -> bool:
+        """Return whether this alarm contains a time condition."""
+        return any(
+            item.get("type") == CONDITION_TYPE_TIME
+            for item in self.normalized_conditions
+        )
 
     def activate(self, value: Any = None) -> None:
         """Activate the alarm."""
-
         self.last_value = value
 
-        # A new occurrence only starts when the alarm is in NORMAL.
         if self.state == STATE_NORMAL:
             self.activated_at = utcnow()
             self.acknowledged_at = None
@@ -63,77 +107,36 @@ class Alarm:
         acknowledged_by_user_id: str | None = None,
     ) -> None:
         """Acknowledge the alarm."""
-
         if self.state == STATE_ACTIVE:
-            # The condition is still abnormal.
-            #
-            # ACTIVE -> ACKNOWLEDGED
-            #
-            # Keep all lifecycle timestamps so the manager can
-            # eventually create a complete history record.
             self.state = STATE_ACKNOWLEDGED
-
             if self.acknowledged_at is None:
                 self.acknowledged_at = utcnow()
-
             if acknowledged_by is not None:
                 self.acknowledged_by = acknowledged_by
-
             if acknowledged_by_user_id is not None:
                 self.acknowledged_by_user_id = acknowledged_by_user_id
-
         elif self.state == STATE_INACTIVE:
-            # The condition has already returned to normal.
-            #
-            # INACTIVE -> NORMAL
-            #
-            # The occurrence is complete, but the manager must be
-            # able to update its history record before the final reset.
             if self.acknowledged_at is None:
                 self.acknowledged_at = utcnow()
-
             if acknowledged_by is not None:
                 self.acknowledged_by = acknowledged_by
-
             if acknowledged_by_user_id is not None:
                 self.acknowledged_by_user_id = acknowledged_by_user_id
-
             self.state = STATE_NORMAL
 
     def clear(self) -> None:
         """Handle the alarm condition returning to normal."""
-
         if self.state == STATE_ACTIVE:
-            # The condition has returned to normal before the
-            # operator acknowledged the alarm.
-            #
-            # ACTIVE -> INACTIVE
-            #
-            # The occurrence remains latched until acknowledged.
             self.state = STATE_INACTIVE
             self.cleared_at = utcnow()
-
         elif self.state == STATE_ACKNOWLEDGED:
-            # The operator already acknowledged the alarm and the
-            # condition has now returned to normal.
-            #
-            # ACKNOWLEDGED -> NORMAL
-            #
-            # Do NOT reset here. The manager needs the timestamps
-            # to create the history record first.
             self.cleared_at = utcnow()
             self.state = STATE_NORMAL
-
         elif self.state == STATE_INACTIVE:
-            # INACTIVE remains latched while the condition is normal.
-            #
-            # If the condition becomes abnormal again, the manager
-            # will start a new occurrence.
             return
 
     def reset(self) -> None:
         """Return the alarm to its normal state and clear lifecycle data."""
-
         self.state = STATE_NORMAL
         self.activated_at = None
         self.acknowledged_at = None
@@ -141,37 +144,27 @@ class Alarm:
         self.acknowledged_by_user_id = None
         self.cleared_at = None
         self.trigger_value = None
+        self.condition_snapshot = {}
 
     @property
     def is_active(self) -> bool:
         """Return whether the alarm condition is currently active."""
-
-        return self.state in (
-            STATE_ACTIVE,
-            STATE_ACKNOWLEDGED,
-        )
+        return self.state in (STATE_ACTIVE, STATE_ACKNOWLEDGED)
 
     @property
     def is_acknowledged(self) -> bool:
         """Return whether the alarm is acknowledged."""
-
         return self.state == STATE_ACKNOWLEDGED
 
     @property
     def is_inactive(self) -> bool:
         """Return whether the alarm is inactive but latched."""
-
         return self.state == STATE_INACTIVE
 
     @property
     def duration(self) -> float | None:
         """Return the alarm duration in seconds."""
-
         if self.activated_at is None:
             return None
-
         end_time = self.cleared_at or utcnow()
-
-        return (
-            end_time - self.activated_at
-        ).total_seconds()
+        return (end_time - self.activated_at).total_seconds()

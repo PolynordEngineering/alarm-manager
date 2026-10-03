@@ -52,6 +52,9 @@ class AlarmEntity(SensorEntity):
             "severity": self.alarm.severity,
             "delay": self.alarm.delay,
             "hysteresis": self.alarm.hysteresis,
+            "logic": self.alarm.logic,
+            "conditions": list(self.alarm.normalized_conditions),
+            "condition_snapshot": dict(self.alarm.condition_snapshot),
             "current_value": self.alarm.last_value,
             "trigger_value": self.alarm.trigger_value,
             "activated_at": (

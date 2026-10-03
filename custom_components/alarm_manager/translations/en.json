@@ -86,6 +86,19 @@
         "data": {
           "notification_service": "Mobile notification service"
         }
+      },
+      "condition_menu": {
+        "title": "Alarm Conditions",
+        "description": "{summary}"
+      },
+      "add_condition": {
+        "title": "Add Condition"
+      },
+      "add_entity_condition": {
+        "title": "Entity Condition"
+      },
+      "add_time_condition": {
+        "title": "Time Condition"
       }
     }
   }
