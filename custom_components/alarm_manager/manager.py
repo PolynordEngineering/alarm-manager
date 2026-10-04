@@ -499,6 +499,29 @@ class AlarmManager:
         self._notify_alarm_updated(alarm_id)
         return True
 
+    async def async_clear_alarm(self, alarm_id: str) -> bool:
+        """Clear a latched inactive alarm without acknowledging it.
+
+        The completed history occurrence deliberately remains NOT ACKED.
+        This represents an operator clearing a condition that had already
+        returned to normal without having acknowledged the alarm.
+        """
+        alarm = self._alarms.get(alarm_id)
+
+        if alarm is None:
+            return False
+
+        if alarm.state != STATE_INACTIVE:
+            return False
+
+        alarm.reset()
+
+        await self.async_save()
+
+        self._notify_alarm_updated(alarm_id)
+
+        return True
+
     async def async_acknowledge_alarm(
         self,
         alarm_id: str,

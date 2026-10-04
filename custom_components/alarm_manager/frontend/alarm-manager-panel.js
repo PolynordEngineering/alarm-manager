@@ -31,6 +31,16 @@ class AlarmManagerPanel extends HTMLElement {
             return;
           }
 
+          if (button.classList.contains("clear-alarm-button")) {
+            const alarmId = button.dataset.alarmId;
+
+            if (alarmId) {
+              await this._clearInactiveAlarm(alarmId);
+            }
+
+            return;
+          }
+
           if (button.classList.contains("ack-button")) {
             const alarmId = button.dataset.alarmId;
 
@@ -1013,6 +1023,20 @@ class AlarmManagerPanel extends HTMLElement {
     this._render();
   }
 
+  async _clearInactiveAlarm(alarmId) {
+    if (!this._hass || !alarmId) {
+      return;
+    }
+
+    await this._hass.callService(
+      "alarm_manager",
+      "clear_alarm",
+      {
+        alarm_id: alarmId,
+      }
+    );
+  }
+
   async _acknowledge(alarmId) {
     if (!this._hass || !alarmId) {
       return;
@@ -1346,7 +1370,7 @@ class AlarmManagerPanel extends HTMLElement {
             inactive
               ? `
                   <button
-                    class="ack-button"
+                    class="clear-alarm-button"
                     data-alarm-id="${alarmId}"
                     ${
                       alarmId
@@ -1354,7 +1378,7 @@ class AlarmManagerPanel extends HTMLElement {
                         : "disabled"
                     }
                   >
-                    ACK
+                    CLEAR
                   </button>
                 `
               : acknowledged
@@ -2214,6 +2238,47 @@ class AlarmManagerPanel extends HTMLElement {
           font-weight: 700;
 
           cursor: pointer;
+        }
+
+        .clear-alarm-button {
+          padding:
+            6px
+            10px;
+
+          border:
+            1px solid
+            var(
+              --warning-color,
+              var(--primary-color)
+            );
+
+          border-radius: 4px;
+
+          background:
+            var(
+              --secondary-background-color
+            );
+
+          color:
+            var(
+              --primary-text-color
+            );
+
+          font-size: 9px;
+          font-weight: 700;
+
+          cursor: pointer;
+        }
+
+        .clear-alarm-button:hover {
+          background:
+            var(
+              --warning-color,
+              var(--primary-color)
+            );
+
+          color:
+            white;
         }
 
         .ack-button:hover {

@@ -124,6 +124,18 @@ acknowledge_alarm:
         text:
 
 
+clear_alarm:
+  name: Clear Alarm
+  description: Clear a latched inactive alarm without acknowledging the completed occurrence.
+  fields:
+    alarm_id:
+      name: Alarm ID
+      description: The unique ID of the inactive alarm to clear from Current Alarms.
+      required: true
+      selector:
+        text:
+
+
 acknowledge_all:
   name: Acknowledge All
   description: Acknowledge all currently active and unacknowledged alarms.
