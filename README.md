@@ -4,27 +4,19 @@
 
 Alarm Manager adds a dedicated alarm layer to Home Assistant for users who want a workflow closer to **PLC / SCADA alarm management**: severity, acknowledgement, lifecycle, history, operator tracking, notifications and configurable alarm conditions.
 
-![Alarm Manager](docs/images/alarm-panel.png)
+![Alarm Manager](docs/images/alarm-panel-active.jpg)
 
-## ✨ What is new in v0.2.0
+## ✨ What's new in v0.2.1
 
-Version **0.2.0** is a major UI and alarm-engine update focused on making Alarm Manager easier to configure while adding more advanced alarm logic.
+Version **0.2.1** is a focused UI and usability update following the v0.2.0 alarm-model release.
 
-- 🧩 **Automation-style alarm editor** — create and edit alarms from the Alarm Manager sidebar without navigating through Home Assistant Integrations.
-- 🎯 **Primary alarm entity** — define the entity and its state/threshold first, then add optional additional conditions.
-- 🔗 **Multiple conditions** — combine conditions with **ALL / AND** or **ANY / OR** logic.
-- 🕐 **Time conditions** — after, before and between time windows, including overnight ranges.
-- ⏱️ **Per-condition delay** — require an individual condition to remain true for a configured period.
-- ↔️ **Per-condition hysteresis** — reduce chatter around individual numeric limits.
-- 🚨 **Conditionless/manual alarms** — create alarms without automatic conditions and trigger them from automations, scripts or PLC workflows.
-- 🔔 **Dedicated Notifications page** — manage notification services and targets from the Alarm Manager sidebar.
-- 👥 **Notification targets and severity routing** — route Info, Warning, Alarm and Critical notifications to different targets.
-- 📱 **Mobile-friendly UI** — safe-area handling and mobile navigation support.
-- 🗂️ **History severity filtering** — filter completed alarm occurrences by severity.
-- 👤 **Acknowledgement tracking** — record the Home Assistant user who acknowledged an alarm.
-- 🔄 **Improved condition reconciliation** — alarm state is re-evaluated so stale active occurrences can clear correctly.
+- 🚨 **Clear inactive alarms** — an inactive, unacknowledged alarm now shows **CLEAR** instead of ACK.
+- 🧾 **Preserve acknowledgement truth** — clearing an inactive alarm removes it from Current Alarms without falsely marking the completed occurrence as acknowledged. History remains **NOT ACKED**.
+- 🔔 **Simplified navigation** — the separate **Notifications** sidebar item has been removed. Notification targets and routing remain available inside Alarm Manager.
+- 🖥️ **Updated alarm screenshots** — documentation now reflects the current Alarm Manager UI.
+- ⚡ **Frontend cache update** — the frontend version is bumped so Home Assistant loads the updated panel after an update.
 
-> **v0.2.0 is a development release candidate for the new alarm model.** Test it in your environment before deploying it to production systems.
+> **v0.2.1 builds on the alarm model introduced in v0.2.0.** Existing v0.2.0 alarms and configuration remain the basis for the update.
 
 ---
 
@@ -48,7 +40,7 @@ The integration is local and works with entities already available in Home Assis
 
 ## 🖥️ One place to manage alarms
 
-Alarm Manager v0.2.0 moves day-to-day alarm configuration into its own Home Assistant sidebar experience.
+Alarm Manager v0.2.1 moves day-to-day alarm configuration into its own Home Assistant sidebar experience.
 
 ### Alarm Manager
 
@@ -64,7 +56,9 @@ Use the **Alarm Manager** sidebar entry to:
 
 ### Notifications
 
-Use the dedicated **Notifications** sidebar entry to:
+Notification management is built into the **Alarm Manager** panel. There is no separate Notifications sidebar item.
+
+From Alarm Manager you can:
 
 - Configure the default notification service
 - Add notification targets
@@ -74,9 +68,9 @@ Use the dedicated **Notifications** sidebar entry to:
 
 The Home Assistant integration configuration remains available for integration-level management, but normal alarm operation no longer requires repeatedly navigating through **Settings → Devices & services**.
 
-![Alarm Manager v0.2.0](docs/images/alarm-panel.png)
+![Alarm Manager v0.2.1](docs/images/alarm-panel-active.jpg)
 
-*Alarm Manager v0.2.0: current alarms, notification targets and history in one place.*
+*Alarm Manager v0.2.1: current alarms, notification targets and history in one place.*
 
 ---
 
@@ -260,15 +254,18 @@ ACTIVE
   │
   │ condition clears
   ▼
-CLEARED
+INACTIVE
   │
+  ├── CLEAR → remove from Current Alarms
+  │
+  └── ACK → record acknowledgement and close occurrence
   ▼
 HISTORY
 ```
 
-Acknowledgement does **not** clear the underlying alarm. It records that an operator has seen the alarm.
+Acknowledgement records that an operator has seen the alarm. It does **not** by itself make an active condition normal.
 
-The alarm clears when its conditions are no longer satisfied, taking configured hysteresis into account.
+When an active alarm returns to normal, the occurrence becomes **INACTIVE**. If it was not acknowledged, the operator can use **CLEAR** to remove the latched alarm from Current Alarms. This does **not** mark the history occurrence as acknowledged; history correctly remains **NOT ACKED**.
 
 ---
 
@@ -319,7 +316,7 @@ ALARM     → Operator + Maintenance
 CRITICAL  → Operator + Duty Engineer
 ```
 
-Routing is configured from the Alarm Manager **Notifications** page.
+Routing is configured from the **Notification Targets** section inside Alarm Manager.
 
 ### Direct links
 
@@ -442,6 +439,7 @@ alarm_manager.update_alarm
 alarm_manager.trigger_alarm
 alarm_manager.acknowledge_alarm
 alarm_manager.acknowledge_all
+alarm_manager.clear_alarm
 alarm_manager.remove_alarm
 alarm_manager.clear_history
 alarm_manager.set_default_notification
@@ -456,29 +454,29 @@ See `custom_components/alarm_manager/services.yaml` for the current service sche
 
 ## 📸 Screenshots
 
-### Alarm Manager
+### Alarm Manager — Normal
 
-![Alarm Manager panel](docs/images/alarm-panel.png)
+![Alarm Manager normal](docs/images/alarm-panel-normal.jpg)
+
+### Alarm Manager — Active alarms and history
+
+![Alarm Manager active](docs/images/alarm-panel-active.jpg)
 
 ### Add / Edit Alarm
 
-![Add Alarm](docs/images/add-alarm.png)
+![Add Alarm](docs/images/add-alarm.jpg)
+
+### Additional conditions
+
+![Additional conditions](docs/images/add-alarm-conditions.jpg)
 
 ### Notification Target
 
-![Notification target](docs/images/notification-target.png)
+![Notification target](docs/images/notification-target.jpg)
 
-### Alarm History
+## 🧪 v0.2.1 testing status
 
-![Alarm History](docs/images/history-filter.png)
-
-Additional UI captures, including severity routing and mobile notifications, are kept in [`docs/images/`](docs/images/).
-
----
-
-## 🧪 v0.2.0 testing status
-
-v0.2.0 has been developed through a series of beta builds covering the new editor, multi-condition alarms, notifications, mobile UI, history filtering and alarm-state reconciliation.
+v0.2.1 has been validated against the updated alarm UI, alarm lifecycle handling and navigation changes. The v0.2.0 foundation covers the new editor, multi-condition alarms, notifications, mobile UI, history filtering and alarm-state reconciliation.
 
 Before calling the release production-ready, test at minimum:
 
@@ -492,6 +490,8 @@ Before calling the release production-ready, test at minimum:
 - Alarm delay/hysteresis
 - Conditionless/manual alarms
 - Alarm acknowledgement and clearing
+- Clearing an inactive unacknowledged alarm without changing history acknowledgement
+- Alarm Manager navigation with no separate Notifications sidebar item
 - Notification targets
 - Severity routing
 - History filtering

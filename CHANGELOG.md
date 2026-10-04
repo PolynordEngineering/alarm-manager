@@ -2,6 +2,32 @@
 
 All notable changes to Alarm Manager are documented here.
 
+## [0.2.1] - 2026-10-04
+
+### Added
+
+- Added a dedicated **CLEAR** action for inactive, unacknowledged alarms.
+
+### Changed
+
+- Removed the separate **Notifications** sidebar panel. Notification targets, default notification service settings and severity routing remain available inside Alarm Manager.
+- Bumped the Alarm Manager frontend cache version to ensure the updated panel is loaded after an upgrade.
+- Updated the README screenshots to match the current v0.2.1 UI.
+- Updated documentation to clearly distinguish **ACK** from **CLEAR**:
+  - **ACK** records operator acknowledgement.
+  - **CLEAR** removes an inactive alarm without changing the occurrence's acknowledgement status.
+  - An occurrence cleared without acknowledgement remains **NOT ACKED** in Alarm History.
+
+### Fixed
+
+- Prevented inactive, unacknowledged alarms from being presented with an **ACK** action that could imply the occurrence had been acknowledged.
+- Removed the duplicate Notifications entry from the Home Assistant sidebar.
+
+### Notes
+
+- v0.2.1 is a focused maintenance/UI release built on the v0.2.0 alarm model.
+- Notification functionality has not been removed; only the separate sidebar navigation entry has been removed.
+
 ## [0.2.0] - 2026-09-28
 
 ### Added

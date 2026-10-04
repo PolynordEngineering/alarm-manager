@@ -344,6 +344,29 @@ async def _handle_acknowledge_alarm(
         )
 
 
+async def _handle_clear_alarm(
+    hass: HomeAssistant,
+    call: ServiceCall,
+) -> None:
+    """Handle clearing an inactive alarm without acknowledging it."""
+
+    manager = _get_manager(hass)
+
+    if manager is None:
+        raise RuntimeError(
+            "Alarm Manager is not loaded."
+        )
+
+    alarm_id = call.data["alarm_id"]
+
+    success = await manager.async_clear_alarm(alarm_id)
+
+    if not success:
+        raise ValueError(
+            f"Alarm '{alarm_id}' is not inactive or was not found."
+        )
+
+
 async def _handle_acknowledge_all(
     hass: HomeAssistant,
     call: ServiceCall,
@@ -575,6 +598,16 @@ def async_register_services(
         acknowledge_all,
     )
 
+    async def clear_alarm(call: ServiceCall) -> None:
+        await _handle_clear_alarm(hass, call)
+
+    hass.services.async_register(
+        DOMAIN,
+        "clear_alarm",
+        clear_alarm,
+        schema=ACKNOWLEDGE_ALARM_SCHEMA,
+    )
+
     hass.services.async_register(
         DOMAIN,
         "clear_history",
@@ -622,6 +655,11 @@ def async_remove_services(
     hass.services.async_remove(
         DOMAIN,
         "acknowledge_all",
+    )
+
+    hass.services.async_remove(
+        DOMAIN,
+        "clear_alarm",
     )
 
     hass.services.async_remove(
