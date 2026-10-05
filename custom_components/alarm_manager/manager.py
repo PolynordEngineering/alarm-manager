@@ -186,19 +186,98 @@ class AlarmManager:
 
         return []
 
+    async def _dismiss_alarm_notification(self, notification_id: str) -> None:
+        """Dismiss a persistent Alarm Manager notification if present."""
+        if not self.hass.services.has_service("persistent_notification", "dismiss"):
+            return
+        await self.hass.services.async_call(
+            "persistent_notification",
+            "dismiss",
+            {"notification_id": notification_id},
+            blocking=False,
+        )
+
+    def _active_alarm_objects(self) -> list[Alarm]:
+        """Return alarms currently participating in the active lifecycle."""
+        return [
+            alarm
+            for alarm in self._alarms.values()
+            if alarm.state in (STATE_ACTIVE, STATE_ACKNOWLEDGED)
+        ]
+
+    async def _create_alarm_summary_notification(self) -> None:
+        """Create one compact notification when many alarms are active."""
+        active = self._active_alarm_objects()
+        count = len(active)
+
+        if count <= 3:
+            await self._dismiss_alarm_notification(f"{DOMAIN}_summary")
+            return
+
+        # Remove the individual persistent cards so the operator gets one
+        # compact SCADA-style summary instead of a wall of notifications.
+        for alarm in active:
+            await self._dismiss_alarm_notification(f"{DOMAIN}_{alarm.alarm_id}")
+
+        if self.hass.services.has_service("persistent_notification", "create"):
+            await self.hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": f"🚨 {count} ALARMS ACTIVE",
+                    "message": (
+                        f"**{count} alarms are currently active.**\n\n"
+                        "[**OPEN ALARM MANAGER →**](/alarm-manager)"
+                    ),
+                    "notification_id": f"{DOMAIN}_summary",
+                },
+                blocking=False,
+            )
+
+        # Also update mobile/device targets with the same compact summary.
+        target_names: set[str] = set()
+        services: set[str] = set()
+        for alarm in active:
+            for target_name, service in self._get_notification_targets(alarm.severity):
+                target_names.add(target_name)
+                services.add(service)
+
+        for service in services:
+            if not self.hass.services.has_service("notify", service):
+                continue
+            await self.hass.services.async_call(
+                "notify",
+                service,
+                {
+                    "title": f"🚨 {count} ALARMS ACTIVE",
+                    "message": "One or more Alarm Manager alarms are active.",
+                    "data": {
+                        "url": "/alarm-manager",
+                        "tag": f"{DOMAIN}_summary",
+                        "group": DOMAIN,
+                    },
+                },
+                blocking=False,
+            )
+
     async def _create_alarm_notification(
         self,
         alarm: Alarm,
     ) -> None:
-        """Create a persistent Home Assistant notification."""
+        """Create a compact alarm notification or a multi-alarm summary."""
+        active = self._active_alarm_objects()
+
+        # Once more than three alarms are active, collapse the individual
+        # notifications into one compact summary.
+        if len(active) > 3:
+            await self._create_alarm_summary_notification()
+            return
 
         if not self.hass.services.has_service(
             "persistent_notification",
             "create",
         ):
             return
-
-        title = f"🚨 {alarm.name}"
 
         if alarm.conditions:
             condition_lines = []
@@ -211,27 +290,24 @@ class AlarmManager:
                     if item.get("end_time"):
                         description += f"–{item['end_time']}"
                 else:
+                    threshold = item.get("threshold")
                     description = (
                         f"{item.get('entity_id')} "
-                        f"{item.get('condition')} "
-                        f"{item.get('threshold', '')}"
+                        f"{item.get('condition')}"
                     )
-                condition_lines.append(f"- `{description}`")
+                    if threshold not in (None, ""):
+                        description += f" {threshold}"
+                condition_lines.append(description)
 
             message = (
-                "### ALARM — ACTIVE\n\n"
-                f"**Logic:** **{alarm.logic.upper()}**  \n"
-                f"**Conditions:**\n{chr(10).join(condition_lines)}\n\n"
-                f"**Severity:** **{alarm.severity.upper()}**  \n\n"
+                f"**{alarm.severity.upper()} · ACTIVE**\n\n"
+                f"{chr(10).join(f'`{line}`' for line in condition_lines)}\n\n"
                 "[**OPEN ALARM MANAGER →**](/alarm-manager)"
             )
         else:
             message = (
-                "### ALARM — ACTIVE\n\n"
-                f"**Value:** `{alarm.trigger_value}`  \n"
-                f"**Condition:** `{alarm.condition}`  \n"
-                f"**Limit:** `{alarm.threshold}`  \n"
-                f"**Severity:** **{alarm.severity.upper()}**  \n\n"
+                f"**{alarm.severity.upper()} · ACTIVE**\n\n"
+                f"`{alarm.trigger_value}` · `{alarm.condition} {alarm.threshold}`\n\n"
                 "[**OPEN ALARM MANAGER →**](/alarm-manager)"
             )
 
@@ -239,16 +315,14 @@ class AlarmManager:
             "persistent_notification",
             "create",
             {
-                "title": title,
+                "title": f"🚨 {alarm.name}",
                 "message": message,
                 "notification_id": f"{DOMAIN}_{alarm.alarm_id}",
             },
             blocking=False,
         )
 
-        targets = self._get_notification_targets(
-            alarm.severity
-        )
+        targets = self._get_notification_targets(alarm.severity)
 
         for _target_name, service in targets:
             if not self.hass.services.has_service(
@@ -257,20 +331,27 @@ class AlarmManager:
             ):
                 continue
 
+            if alarm.conditions:
+                compact_conditions = []
+                for item in alarm.normalized_conditions:
+                    text = f"{item.get('entity_id')} {item.get('condition')}"
+                    if item.get("threshold") not in (None, ""):
+                        text += f" {item.get('threshold')}"
+                    compact_conditions.append(text)
+                compact_message = f"{alarm.severity.upper()} · ACTIVE\n" + "\n".join(compact_conditions)
+            else:
+                compact_message = f"{alarm.severity.upper()} · ACTIVE\n{alarm.trigger_value} · {alarm.condition} {alarm.threshold}"
+
             await self.hass.services.async_call(
                 "notify",
                 service,
                 {
                     "title": f"🚨 {alarm.name}",
-                    "message": (
-                        f"Alarm active: {alarm.name} "
-                        f"[{alarm.severity.upper()}]"
-                        if alarm.conditions
-                        else f"Alarm active: {alarm.trigger_value} "
-                        f"({alarm.condition} {alarm.threshold})"
-                    ),
+                    "message": compact_message,
                     "data": {
                         "url": "/alarm-manager",
+                        "tag": f"{DOMAIN}_{alarm.alarm_id}",
+                        "group": DOMAIN,
                     },
                 },
                 blocking=False,
@@ -528,6 +609,7 @@ class AlarmManager:
 
         self._notify_alarm_updated(alarm_id)
         self._notify_history_updated()
+        await self._create_alarm_summary_notification()
 
         return True
 
@@ -608,6 +690,7 @@ class AlarmManager:
             )
 
             self._notify_history_updated()
+            await self._create_alarm_summary_notification()
 
             return True
 
@@ -914,6 +997,7 @@ class AlarmManager:
             )
 
             await self.async_save()
+            await self._create_alarm_summary_notification()
 
             return
 
@@ -930,6 +1014,7 @@ class AlarmManager:
             alarm.reset()
 
             await self.async_save()
+            await self._create_alarm_summary_notification()
 
             return
 

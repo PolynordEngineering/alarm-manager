@@ -2,7 +2,35 @@
 
 All notable changes to Alarm Manager are documented here.
 
-## [0.2.1] - 2026-10-05
+## [0.2.2] - 2026-10-05
+
+### Added
+- Added a dedicated **Alarm Management** view inside Alarm Manager for managing all configured alarms, including NORMAL alarms.
+- Added direct **EDIT**, **DELETE** and **+ ADD ALARM** actions from the Alarm Management view.
+- Added SCADA-style configuration summary showing configured, active, acknowledged and inactive alarm counts.
+- Added compact alarm notification presentation and multi-alarm summary notifications with an **OPEN ALARM MANAGER** action.
+
+### Improved
+- Improved ACK and CLEAR button handling so operator actions respond reliably to the first click.
+- Improved live Alarm History updates after ACK and CLEAR operations.
+- Improved distinction between **ACK**, **CLEARED** and **NOT ACKED** history states.
+- Improved notification layout for Home Assistant mobile and notification views.
+- Updated README screenshots to the current v0.2.2 interface.
+
+### Fixed
+- Fixed Alarm History sometimes requiring a browser refresh or another alarm event before showing **CLEARED**.
+- Fixed acknowledged occurrences being incorrectly displayed as **CLEARED** by optimistic frontend updates.
+- Fixed Alarm Management editor actions being rendered behind the management view.
+- Fixed the primary numeric alarm editor so temperature/analog alarms expose the threshold field immediately.
+- Fixed creation of binary switch alarms using **is ON / is OFF** conditions.
+
+All notable changes to Alarm Manager are documented here.
+
+## [0.2.1]
+
+### Navigation fix
+- Fixed EDIT and + ADD ALARM in the Alarm Management screen being hidden behind the management overlay.
+ - 2026-10-05
 
 ### Fixed
 - Primary alarm conditions now default to **is above**, exposing the Value / Threshold field immediately for temperature and other numeric sensors.

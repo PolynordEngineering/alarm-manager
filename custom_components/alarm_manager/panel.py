@@ -19,7 +19,7 @@ BRAND_FILE = BRAND_DIR / "icon.png"
 STATIC_URL = "/alarm_manager"
 
 # Increase whenever the frontend JavaScript changes.
-FRONTEND_VERSION = "1.14.0"
+FRONTEND_VERSION = "1.19.0"
 
 
 async def async_register_panel(hass: HomeAssistant) -> None:

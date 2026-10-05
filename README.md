@@ -4,21 +4,47 @@
 
 Alarm Manager adds a dedicated alarm layer to Home Assistant for users who want a workflow closer to **PLC / SCADA alarm management**: severity, acknowledgement, lifecycle, history, operator tracking, notifications and configurable alarm conditions.
 
-![Alarm Manager](docs/images/alarm-panel-active.jpg)
+![Alarm Manager v0.2.2](docs/images/alarm-panel-v0.2.2.jpg)
 
-## ✨ What's new in v0.2.1
+## ✨ What's new in v0.2.2
 
-Version **0.2.1** is a focused UI and usability update following the v0.2.0 alarm-model release.
+Version **0.2.2** is a usability and operator-interface update focused on making Alarm Manager behave more like a compact SCADA alarm system.
 
-- 🚨 **Clear inactive alarms** — an inactive, unacknowledged alarm now shows **CLEAR** instead of ACK.
-- 🧾 **Preserve acknowledgement truth** — clearing an inactive alarm removes it from Current Alarms without falsely marking the completed occurrence as acknowledged. History remains **NOT ACKED**.
-- 🔔 **Simplified navigation** — the separate **Notifications** sidebar item has been removed. Notification targets and routing remain available inside Alarm Manager.
-- 🖥️ **Updated alarm screenshots** — documentation now reflects the current Alarm Manager UI.
-- ⚡ **Frontend cache update** — the frontend version is bumped so Home Assistant loads the updated panel after an update.
+- 🖥️ **Alarm Management view** — manage every configured alarm from inside Alarm Manager, including alarms that are currently NORMAL and therefore absent from Current Alarms.
+- ✏️ **Edit / Delete alarms** — edit or remove alarm definitions directly from the Alarm Management view.
+- ➕ **Add Alarm from management** — create a new alarm without leaving Alarm Manager.
+- 🚨 **One-click alarm actions** — improved action handling for ACK and CLEAR to avoid missed first clicks.
+- 🧾 **Live history updates** — ACK and CLEARED status now update immediately in Alarm History without requiring a browser refresh or another alarm event.
+- 🔔 **Modern notifications** — Home Assistant alarm notifications are more compact and easier to scan.
+- 📦 **Alarm notification summary** — when several alarms are active, notifications can be consolidated into a single summary with a direct **OPEN ALARM MANAGER** action.
+- 🧠 **Correct ACK vs CLEARED lifecycle** — an acknowledged occurrence remains **ACK**, while an unacknowledged inactive occurrence that the operator clears is recorded as **CLEARED**.
+- 📸 **Updated documentation screenshots** — README images now show the current v0.2.2 operator and alarm-management interfaces.
 
-> **v0.2.1 builds on the alarm model introduced in v0.2.0.** Existing v0.2.0 alarms and configuration remain the basis for the update.
+> **v0.2.2 builds on the alarm model and UI introduced in v0.2.0 and refined in v0.2.1.**
 
----
+## 🖥️ Alarm Management
+
+The **MANAGE ALARMS** button opens a SCADA-style configuration view inside Alarm Manager. It is not a separate Home Assistant sidebar item.
+
+The management view lists **all configured alarms**, including NORMAL alarms that are not currently visible in Current Alarms. From there an operator/administrator can:
+
+- View the current status of every configured alarm
+- See severity, primary trigger/limit and condition count
+- **EDIT** an alarm
+- **DELETE** an alarm
+- **+ ADD ALARM**
+
+![Alarm Management](docs/images/manage-alarms.jpg)
+
+*SCADA-style Alarm Configuration view showing all configured alarms and direct Edit/Delete actions.*
+
+### Operator view vs configuration view
+
+**Alarm Manager** is the operator view: active, inactive and acknowledged alarms, notification targets and history.
+
+**Alarm Management** is the configuration view: all alarm definitions, including NORMAL alarms, with Edit/Delete controls.
+
+This keeps the Home Assistant sidebar clean while still providing a dedicated place to maintain the complete alarm database.
 
 ## Why Alarm Manager?
 
@@ -40,7 +66,7 @@ The integration is local and works with entities already available in Home Assis
 
 ## 🖥️ One place to manage alarms
 
-Alarm Manager v0.2.1 moves day-to-day alarm configuration into its own Home Assistant sidebar experience.
+Alarm Manager v0.2.2 provides a dedicated operator view plus an in-panel Alarm Management configuration view.
 
 ### Alarm Manager
 
@@ -68,7 +94,7 @@ From Alarm Manager you can:
 
 The Home Assistant integration configuration remains available for integration-level management, but normal alarm operation no longer requires repeatedly navigating through **Settings → Devices & services**.
 
-![Alarm Manager v0.2.1](docs/images/alarm-panel-active.jpg)
+![Alarm Manager v0.2.2](docs/images/alarm-panel-v0.2.2.jpg)
 
 *Alarm Manager v0.2.1: current alarms, notification targets and history in one place.*
 
@@ -458,9 +484,11 @@ See `custom_components/alarm_manager/services.yaml` for the current service sche
 
 ![Alarm Manager normal](docs/images/alarm-panel-normal.jpg)
 
+![Alarm Management](docs/images/manage-alarms.jpg)
+
 ### Alarm Manager — Active alarms and history
 
-![Alarm Manager active](docs/images/alarm-panel-active.jpg)
+![Alarm Manager v0.2.2](docs/images/alarm-panel-v0.2.2.jpg)
 
 ### Add / Edit Alarm
 

@@ -9,6 +9,10 @@ class AlarmManagerPanel extends HTMLElement {
     this._unsubscribeStateChanges = null;
     this._builder = null;
     this._historySeverityFilter = "all";
+    this._alarmManagementView = false;
+    this._actionInFlight = new Set();
+    this._historyOptimistic = new Map();
+    this._localAlarmStateOverrides = new Map();
 
     this.shadowRoot.addEventListener(
       "click",
@@ -22,6 +26,11 @@ class AlarmManagerPanel extends HTMLElement {
         const button = target.closest("button");
 
         if (!button || !this._hass) {
+          return;
+        }
+
+        const actionKey = button.dataset.alarmActionId || button.dataset.alarmId || button.id;
+        if (button.dataset.busy === "true" || (actionKey && this._actionInFlight.has(actionKey))) {
           return;
         }
 
@@ -48,6 +57,44 @@ class AlarmManagerPanel extends HTMLElement {
               await this._acknowledge(alarmId);
             }
 
+            return;
+          }
+
+          if (button.id === "manage-alarms-button") {
+            this._alarmManagementView = true;
+            this._render();
+            return;
+          }
+
+          if (button.id === "close-alarm-management-button") {
+            this._alarmManagementView = false;
+    this._actionInFlight = new Set();
+    this._historyOptimistic = new Map();
+    this._localAlarmStateOverrides = new Map();
+            this._render();
+            return;
+          }
+
+          if (button.id === "manage-add-alarm-button") {
+            this._openBuilder();
+            return;
+          }
+
+          if (button.classList.contains("manage-edit-alarm-button")) {
+            const alarmId = button.dataset.alarmId;
+            const alarm = this._getAlarms().find((item) => item.attributes?.alarm_id === alarmId);
+            if (alarm) {
+              this._openBuilder(alarm);
+            }
+            return;
+          }
+
+          if (button.classList.contains("manage-delete-alarm-button")) {
+            const alarmId = button.dataset.alarmId;
+            const alarm = this._getAlarms().find((item) => item.attributes?.alarm_id === alarmId);
+            if (alarm) {
+              await this._deleteAlarmFromManagement(alarm);
+            }
             return;
           }
 
@@ -261,6 +308,51 @@ class AlarmManagerPanel extends HTMLElement {
                 ?.alarm_id
             )
           ) {
+            // Home Assistant can deliver the state_changed event before the
+            // new state has propagated into the panel's cached hass object.
+            // Update the local state from the event first so history changes
+            // (for example CLEAR -> CLEARED) appear immediately without a
+            // manual refresh or waiting for the next alarm event.
+            if (entityId === "sensor.alarm_history" && event.data?.new_state) {
+              this._hass = {
+                ...this._hass,
+                states: {
+                  ...(this._hass?.states || {}),
+                  [entityId]: event.data.new_state,
+                },
+              };
+
+              const history = event.data.new_state.attributes?.history;
+              if (Array.isArray(history)) {
+                for (const [alarmId, status] of this._historyOptimistic.entries()) {
+                  const record = history.find((item) => item?.alarm_id === alarmId);
+                  const authoritativeStatus = String(
+                    record?.completion_status || ""
+                  ).toUpperCase();
+
+                  // The optimistic CLEAR is only valid for an occurrence that
+                  // is still unacknowledged. If the backend reports
+                  // ACKNOWLEDGED, that is authoritative and must never be
+                  // displayed as CLEARED.
+                  if (
+                    record &&
+                    (authoritativeStatus === status ||
+                      authoritativeStatus === "ACKNOWLEDGED")
+                  ) {
+                    this._historyOptimistic.delete(alarmId);
+                  }
+                }
+              }
+            }
+
+            if (event.data?.new_state?.attributes?.alarm_id) {
+              const alarmId = event.data.new_state.attributes.alarm_id;
+              const localOverride = this._localAlarmStateOverrides.get(alarmId);
+              if (localOverride && event.data.new_state.state !== "inactive") {
+                this._localAlarmStateOverrides.delete(alarmId);
+              }
+            }
+
             if (!this._builder && !this._targetEditor && !this._isHistoryFilterFocused()) {
               this._render();
             }
@@ -296,6 +388,11 @@ class AlarmManagerPanel extends HTMLElement {
           state.attributes &&
           state.attributes.alarm_id
         );
+      })
+      .map((state) => {
+        const alarmId = state.attributes?.alarm_id;
+        const override = alarmId ? this._localAlarmStateOverrides.get(alarmId) : null;
+        return override ? { ...state, state: override } : state;
       })
       .sort((a, b) => {
         const severityOrder = {
@@ -382,7 +479,30 @@ class AlarmManagerPanel extends HTMLElement {
     }
 
     const history = historyEntity.attributes?.history;
-    return Array.isArray(history) ? history : [];
+    if (!Array.isArray(history)) {
+      return [];
+    }
+
+    return history.map((record) => {
+      const optimisticStatus = record?.alarm_id
+        ? this._historyOptimistic.get(record.alarm_id)
+        : null;
+      const authoritativeStatus = String(
+        record?.completion_status || ""
+      ).toUpperCase();
+
+      // Never let a stale optimistic CLEAR override an authoritative ACK.
+      if (authoritativeStatus === "ACKNOWLEDGED") {
+        if (record?.alarm_id) {
+          this._historyOptimistic.delete(record.alarm_id);
+        }
+        return record;
+      }
+
+      return optimisticStatus
+        ? { ...record, completion_status: optimisticStatus }
+        : record;
+    });
   }
 
   _getFilteredHistory() {
@@ -1004,6 +1124,18 @@ class AlarmManagerPanel extends HTMLElement {
     this._render();
   }
 
+  async _deleteAlarmFromManagement(alarm) {
+    if (!this._hass || !alarm?.attributes?.alarm_id) return;
+    const name = alarm.attributes.name || "this alarm";
+    if (!window.confirm(`Delete alarm "${name}"? This removes the alarm configuration but does not erase its existing history.`)) {
+      return;
+    }
+    await this._hass.callService("alarm_manager", "remove_alarm", {
+      alarm_id: alarm.attributes.alarm_id,
+    });
+    this._render();
+  }
+
   async _deleteBuilderAlarm() {
     if (!this._hass || !this._builder?.alarmId) return;
     const name = this._builder.name || "this alarm";
@@ -1027,17 +1159,37 @@ class AlarmManagerPanel extends HTMLElement {
   }
 
   async _clearInactiveAlarm(alarmId) {
-    if (!this._hass || !alarmId) {
+    if (!this._hass || !alarmId || this._actionInFlight.has(`clear:${alarmId}`)) {
       return;
     }
 
-    await this._hass.callService(
-      "alarm_manager",
-      "clear_alarm",
-      {
-        alarm_id: alarmId,
-      }
-    );
+    this._actionInFlight.add(`clear:${alarmId}`);
+    const button = this.shadowRoot?.querySelector(`.clear-alarm-button[data-alarm-id="${CSS.escape(alarmId)}"]`);
+    if (button) {
+      button.dataset.busy = "true";
+      button.disabled = true;
+      button.classList.add("is-busy");
+      button.textContent = "CLEARING…";
+    }
+
+    // Optimistically update the UI. The backend will publish the authoritative state immediately after.
+    this._localAlarmStateOverrides.set(alarmId, "normal");
+    this._historyOptimistic.set(alarmId, "CLEARED");
+    this._render();
+
+    try {
+      await this._hass.callService(
+        "alarm_manager",
+        "clear_alarm",
+        { alarm_id: alarmId },
+      );
+    } catch (error) {
+      this._localAlarmStateOverrides.delete(alarmId);
+      this._historyOptimistic.delete(alarmId);
+      throw error;
+    } finally {
+      this._actionInFlight.delete(`clear:${alarmId}`);
+    }
   }
 
   async _acknowledge(alarmId) {
@@ -1113,6 +1265,97 @@ class AlarmManagerPanel extends HTMLElement {
     const config = this._getNotificationConfig();
     this._notificationSettings = { defaultService: config.defaultService || "disabled" };
     this._render();
+  }
+
+  _renderAlarmManagementView() {
+    if (!this._alarmManagementView) return "";
+
+    const alarms = this._getAlarms();
+    const stateLabel = (state) => {
+      switch (state) {
+        case "active": return "ACTIVE";
+        case "acknowledged": return "ACKNOWLEDGED";
+        case "inactive": return "INACTIVE";
+        default: return "NORMAL";
+      }
+    };
+    const stateClass = (state) => {
+      switch (state) {
+        case "active": return "management-state-active";
+        case "acknowledged": return "management-state-ack";
+        case "inactive": return "management-state-inactive";
+        default: return "management-state-normal";
+      }
+    };
+
+    return `
+      <div class="alarm-management-overlay">
+        <div class="alarm-management-shell">
+          <header class="alarm-management-header">
+            <button type="button" class="automation-back" id="close-alarm-management-button" aria-label="Back to Alarm Manager">←</button>
+            <div class="automation-editor-heading">
+              <div class="automation-editor-title">Alarm Configuration</div>
+              <div class="automation-editor-subtitle">SCADA-style overview of every configured alarm. Edit, delete, or create alarms from one place.</div>
+            </div>
+            <div class="alarm-management-header-actions">
+              <button type="button" class="toolbar-button" id="close-alarm-management-button">CLOSE</button>
+              <button type="button" class="toolbar-button primary" id="manage-add-alarm-button">+ ADD ALARM</button>
+            </div>
+          </header>
+
+          <main class="alarm-management-content">
+            <div class="management-summary">
+              <div><strong>${alarms.length}</strong><span>CONFIGURED ALARMS</span></div>
+              <div><strong>${alarms.filter((a) => a.state === "active").length}</strong><span>ACTIVE</span></div>
+              <div><strong>${alarms.filter((a) => a.state === "acknowledged").length}</strong><span>ACKNOWLEDGED</span></div>
+              <div><strong>${alarms.filter((a) => a.state === "inactive").length}</strong><span>INACTIVE</span></div>
+            </div>
+
+            ${alarms.length === 0 ? `
+              <div class="management-empty">
+                <div class="management-empty-icon">🚨</div>
+                <strong>No alarms configured</strong>
+                <span>Create your first alarm to start monitoring your system.</span>
+                <button type="button" class="toolbar-button primary" id="manage-add-alarm-button">+ ADD ALARM</button>
+              </div>
+            ` : `
+              <div class="alarm-management-table">
+                <div class="alarm-management-table-header">
+                  <div>STATUS</div>
+                  <div>SEVERITY</div>
+                  <div>ALARM</div>
+                  <div>TRIGGER / LIMIT</div>
+                  <div>CONDITIONS</div>
+                  <div>ACTIONS</div>
+                </div>
+                ${alarms.map((alarm) => {
+                  const attrs = alarm.attributes || {};
+                  const conditions = Array.isArray(attrs.conditions) ? attrs.conditions : [];
+                  const primary = conditions.find((c) => c.type === "entity") || conditions[0] || { entity_id: attrs.entity_id, condition: attrs.condition, threshold: attrs.threshold };
+                  const triggerEntity = primary?.entity_id || attrs.entity_id || "Manual trigger";
+                  const triggerText = primary?.condition ? this._conditionLabel(primary.condition) : "Manual";
+                  const threshold = primary?.threshold ?? attrs.threshold;
+                  const limit = threshold !== undefined && threshold !== null && ["above", "below", "equal", "not_equal", "greater_than", "less_than"].includes(String(primary?.condition || attrs.condition || "")) ? ` ${this._escape(threshold)}` : "";
+                  const conditionCount = conditions.length || (attrs.entity_id ? 1 : 0);
+                  return `
+                    <div class="alarm-management-row">
+                      <div><span class="management-state ${stateClass(alarm.state)}">${stateLabel(alarm.state)}</span></div>
+                      <div><span class="management-severity ${this._severityClass(attrs.severity)}">${this._escape(String(attrs.severity || "warning").toUpperCase())}</span></div>
+                      <div class="management-alarm-name"><strong>${this._escape(attrs.name || alarm.entity_id)}</strong><span>${this._escape(alarm.entity_id)}</span></div>
+                      <div class="management-trigger"><strong>${this._escape(triggerText)}${limit}</strong><span>${this._escape(triggerEntity)}</span></div>
+                      <div class="management-conditions">${conditionCount ? `${conditionCount} condition${conditionCount === 1 ? "" : "s"} · ${this._escape(String(attrs.logic || "all").toUpperCase())}` : "Manual trigger"}</div>
+                      <div class="management-actions">
+                        <button type="button" class="toolbar-button manage-edit-alarm-button" data-alarm-id="${this._escape(attrs.alarm_id || "")}">EDIT</button>
+                        <button type="button" class="toolbar-button danger manage-delete-alarm-button" data-alarm-id="${this._escape(attrs.alarm_id || "")}">DELETE</button>
+                      </div>
+                    </div>`;
+                }).join("")}
+              </div>
+            `}
+          </main>
+        </div>
+      </div>
+    `;
   }
 
   _renderNotificationsView() {
@@ -1599,7 +1842,7 @@ class AlarmManagerPanel extends HTMLElement {
         .toolbar-button { padding:7px 12px; border:1px solid var(--divider-color); border-radius:5px; cursor:pointer; background:var(--secondary-background-color); color:var(--primary-text-color); font-size:9px; font-weight:700; letter-spacing:.05em; } .toolbar-button.primary { background:var(--primary-color); border-color:var(--primary-color); color:white; } .toolbar-button.danger { color:#c62828; }
         .automation-card { border:1px solid var(--divider-color); border-radius:8px; background:var(--card-background-color); box-shadow:0 1px 2px rgba(0,0,0,.06); } .target-form { display:grid; grid-template-columns:1fr 1fr; gap:14px; padding:18px; } .automation-card label { display:flex; flex-direction:column; gap:6px; } .automation-card label span { font-size:9px; font-weight:700; letter-spacing:.07em; color:var(--secondary-text-color); } .automation-card input,.automation-card select { width:100%; min-height:40px; padding:8px 10px; border:1px solid var(--divider-color); border-radius:5px; background:var(--primary-background-color); color:var(--primary-text-color); font:inherit; font-size:12px; }
         .notification-subtitle { margin-top:3px; font-size:10px; color:var(--secondary-text-color); } .notification-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; } .notification-card { display:flex; align-items:center; gap:12px; padding:14px; border:1px solid var(--divider-color); border-radius:8px; background:var(--card-background-color); } .notification-card-icon { width:34px; height:34px; display:grid; place-items:center; border-radius:7px; background:var(--secondary-background-color); } .notification-card-main { flex:1; min-width:0; } .notification-card-name { font-size:12px; font-weight:600; } .notification-card-service { margin-top:3px; font-size:9px; color:var(--secondary-text-color); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .notification-card-severities { display:flex; gap:4px; margin-top:7px; flex-wrap:wrap; } .notification-card-severities span { padding:3px 5px; border-radius:4px; background:var(--secondary-background-color); font-size:7px; font-weight:800; } .notification-edit-button { padding:6px 8px; border:1px solid var(--divider-color); border-radius:4px; background:transparent; color:var(--secondary-text-color); font-size:8px; font-weight:800; cursor:pointer; } .notification-empty { padding:20px; border:1px dashed var(--divider-color); border-radius:8px; background:var(--card-background-color); } .notification-empty strong { display:block; font-size:12px; } .notification-empty span { display:block; margin-top:4px; font-size:10px; color:var(--secondary-text-color); }
-        .target-editor { position:fixed; inset:0; z-index:1000; min-height:100%; background:var(--primary-background-color); overflow:auto; } .automation-editor-header { position:sticky; top:0; z-index:2; display:flex; align-items:center; gap:16px; min-height:64px; padding:10px 24px; background:var(--card-background-color); border-bottom:1px solid var(--divider-color); } .automation-back { width:38px; height:38px; border:0; border-radius:50%; background:transparent; color:var(--primary-text-color); font-size:25px; cursor:pointer; } .automation-editor-heading { flex:1; min-width:0; } .automation-editor-title { font-size:20px; font-weight:600; } .automation-editor-subtitle { margin-top:2px; font-size:11px; color:var(--secondary-text-color); } .automation-header-actions { display:flex; gap:8px; } .target-editor-body { width:min(820px,calc(100vw - 40px)); margin:0 auto; padding:30px 0 70px; } .severity-routing { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; } .severity-check { display:flex; align-items:center; gap:9px; padding:14px; border:1px solid var(--divider-color); border-radius:7px; background:var(--card-background-color); font-size:10px; font-weight:700; cursor:pointer; } .severity-check input { accent-color:var(--primary-color); } .notification-routing-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; } .routing-summary-card { padding:14px; border:1px solid var(--divider-color); border-radius:8px; background:var(--card-background-color); } .routing-summary-severity { font-size:9px; font-weight:800; letter-spacing:.08em; } .routing-summary-names { margin-top:6px; font-size:11px; color:var(--secondary-text-color); } .default-notification-status { display:flex; align-items:center; gap:8px; padding:10px 0; font-size:11px; } .status-dot { width:8px; height:8px; border-radius:50%; background:var(--primary-color); } @media(max-width:700px){.mobile-menu-button{display:inline-grid;place-items:center}.content{padding:16px}.notification-grid,.target-form,.notification-routing-summary{grid-template-columns:1fr}.severity-routing{grid-template-columns:1fr 1fr}.automation-editor-header{padding:8px 12px}.automation-editor-subtitle{display:none}.target-editor-body{width:calc(100vw - 24px);padding-top:20px}}
+        .target-editor { position:fixed; inset:0; z-index:1300; min-height:100%; background:var(--primary-background-color); overflow:auto; } .automation-editor-header { position:sticky; top:0; z-index:2; display:flex; align-items:center; gap:16px; min-height:64px; padding:10px 24px; background:var(--card-background-color); border-bottom:1px solid var(--divider-color); } .automation-back { width:38px; height:38px; border:0; border-radius:50%; background:transparent; color:var(--primary-text-color); font-size:25px; cursor:pointer; } .automation-editor-heading { flex:1; min-width:0; } .automation-editor-title { font-size:20px; font-weight:600; } .automation-editor-subtitle { margin-top:2px; font-size:11px; color:var(--secondary-text-color); } .automation-header-actions { display:flex; gap:8px; } .target-editor-body { width:min(820px,calc(100vw - 40px)); margin:0 auto; padding:30px 0 70px; } .severity-routing { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; } .severity-check { display:flex; align-items:center; gap:9px; padding:14px; border:1px solid var(--divider-color); border-radius:7px; background:var(--card-background-color); font-size:10px; font-weight:700; cursor:pointer; } .severity-check input { accent-color:var(--primary-color); } .notification-routing-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; } .routing-summary-card { padding:14px; border:1px solid var(--divider-color); border-radius:8px; background:var(--card-background-color); } .routing-summary-severity { font-size:9px; font-weight:800; letter-spacing:.08em; } .routing-summary-names { margin-top:6px; font-size:11px; color:var(--secondary-text-color); } .default-notification-status { display:flex; align-items:center; gap:8px; padding:10px 0; font-size:11px; } .status-dot { width:8px; height:8px; border-radius:50%; background:var(--primary-color); } @media(max-width:700px){.mobile-menu-button{display:inline-grid;place-items:center}.content{padding:16px}.notification-grid,.target-form,.notification-routing-summary{grid-template-columns:1fr}.severity-routing{grid-template-columns:1fr 1fr}.automation-editor-header{padding:8px 12px}.automation-editor-subtitle{display:none}.target-editor-body{width:calc(100vw - 24px);padding-top:20px}}
       </style>${this._renderNotificationsView()}`;
       return;
     }
@@ -2296,7 +2539,8 @@ class AlarmManagerPanel extends HTMLElement {
           cursor: pointer;
         }
 
-        .clear-alarm-button:hover {
+        .clear-alarm-button.is-busy { opacity:.65; cursor:wait; }
+      .clear-alarm-button:hover {
           background:
             var(
               --warning-color,
@@ -2661,7 +2905,7 @@ class AlarmManagerPanel extends HTMLElement {
 
         .condition-live-status { padding:0 16px 14px; font-size:11px; color:var(--secondary-text-color); } .condition-live-status strong { color:var(--primary-text-color); } .history-filter { min-height:32px; padding:6px 10px; border:1px solid var(--divider-color); border-radius:5px; background:var(--secondary-background-color); color:var(--primary-text-color); font:inherit; font-size:9px; }
         /* Automation-style alarm editor */
-        .builder-overlay { position: fixed; inset: 0; z-index: 1000; background: var(--primary-background-color); overflow: auto; box-sizing: border-box; padding-top: max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)); padding-bottom: max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px)); }
+        .builder-overlay { position: fixed; inset: 0; z-index: 1300; background: var(--primary-background-color); overflow: auto; box-sizing: border-box; padding-top: max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)); padding-bottom: max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px)); }
         .automation-editor { min-height: 100%; display: flex; flex-direction: column; }
         .automation-editor-header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 16px; min-height: 64px; padding: 10px 24px; background: var(--card-background-color); border-bottom: 1px solid var(--divider-color); }
         .automation-back { width: 38px; height: 38px; border: 0; border-radius: 50%; background: transparent; color: var(--primary-text-color); font-size: 25px; cursor: pointer; }
@@ -2749,6 +2993,38 @@ class AlarmManagerPanel extends HTMLElement {
           cursor: default;
         }
 
+        .alarm-management-overlay { position:fixed; inset:0; z-index:1200; background:var(--primary-background-color); overflow:auto; }
+        .alarm-management-shell { min-height:100%; display:flex; flex-direction:column; }
+        .alarm-management-header { position:sticky; top:0; z-index:3; display:flex; align-items:center; gap:16px; min-height:70px; padding:10px 24px; background:var(--card-background-color); border-bottom:1px solid var(--divider-color); }
+        .alarm-management-header-actions { display:flex; align-items:center; gap:8px; }
+        .alarm-management-content { width:min(1400px,calc(100vw - 40px)); margin:0 auto; padding:24px 0 60px; }
+        .management-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:18px; }
+        .management-summary > div { padding:14px 16px; border:1px solid var(--divider-color); border-radius:7px; background:var(--card-background-color); }
+        .management-summary strong { display:block; font-size:22px; font-weight:700; }
+        .management-summary span { display:block; margin-top:4px; font-size:8px; font-weight:800; letter-spacing:.08em; color:var(--secondary-text-color); }
+        .alarm-management-table { border:1px solid var(--divider-color); border-radius:8px; overflow:hidden; background:var(--card-background-color); }
+        .alarm-management-table-header, .alarm-management-row { display:grid; grid-template-columns:110px 100px minmax(190px,1.2fr) minmax(180px,1fr) 150px 155px; align-items:center; column-gap:12px; }
+        .alarm-management-table-header { min-height:38px; padding:0 14px; background:var(--secondary-background-color); border-bottom:1px solid var(--divider-color); font-size:8px; font-weight:800; letter-spacing:.08em; color:var(--secondary-text-color); }
+        .alarm-management-row { min-height:70px; padding:10px 14px; border-bottom:1px solid var(--divider-color); }
+        .alarm-management-row:last-child { border-bottom:0; }
+        .management-state, .management-severity { display:inline-flex; align-items:center; justify-content:center; min-width:72px; padding:5px 7px; border-radius:4px; font-size:7px; font-weight:900; letter-spacing:.05em; }
+        .management-state-active { background:rgba(198,40,40,.12); color:#c62828; }
+        .management-state-ack { background:rgba(245,158,11,.14); color:#9a6700; }
+        .management-state-inactive { background:rgba(117,117,117,.12); color:var(--secondary-text-color); }
+        .management-state-normal { background:rgba(76,175,80,.12); color:#388e3c; }
+        .management-alarm-name strong, .management-trigger strong { display:block; font-size:10px; font-weight:700; }
+        .management-alarm-name span, .management-trigger span { display:block; margin-top:4px; font-size:8px; color:var(--secondary-text-color); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .management-conditions { font-size:9px; color:var(--secondary-text-color); }
+        .management-actions { display:flex; gap:6px; justify-content:flex-end; }
+        .management-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:320px; padding:40px; border:1px dashed var(--divider-color); border-radius:8px; background:var(--card-background-color); text-align:center; }
+        .management-empty-icon { font-size:38px; margin-bottom:10px; }
+        .management-empty strong { font-size:15px; }
+        .management-empty span { margin:6px 0 16px; font-size:10px; color:var(--secondary-text-color); }
+
+        @media (max-width: 1100px) {
+          .alarm-management-table-header, .alarm-management-row { grid-template-columns:95px 90px minmax(150px,1fr) minmax(150px,1fr) 120px 145px; }
+        }
+
         @media (max-width: 900px) {
           .alarm-settings-card, .target-form { grid-template-columns: 1fr 1fr; }
           .automation-fields { grid-template-columns: 1fr 1fr; }
@@ -2771,6 +3047,14 @@ class AlarmManagerPanel extends HTMLElement {
           .automation-add-row { align-items:stretch; flex-direction:column; }
           .logic-picker { width:100%; }
           .severity-routing { grid-template-columns:1fr 1fr; }
+          .alarm-management-header { padding:8px 12px; }
+          .alarm-management-content { width:calc(100vw - 24px); padding-top:16px; }
+          .management-summary { grid-template-columns:1fr 1fr; }
+          .alarm-management-table { overflow:visible; border:0; background:transparent; }
+          .alarm-management-table-header { display:none; }
+          .alarm-management-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:14px; margin-bottom:10px; border:1px solid var(--divider-color); border-radius:8px; background:var(--card-background-color); }
+          .management-actions { justify-content:flex-start; grid-column:1 / -1; }
+          .alarm-management-header-actions .toolbar-button:first-child { display:none; }
         }
 
       </style>
@@ -2867,6 +3151,7 @@ class AlarmManagerPanel extends HTMLElement {
                 </div>
 
                 <div class="alarm-action-buttons">
+                  <button type="button" class="toolbar-button" id="manage-alarms-button">MANAGE ALARMS</button>
                   <button type="button" class="toolbar-button primary add-alarm-button" id="add-alarm-button">+ ADD ALARM</button>
                   <button type="button" class="toolbar-button primary" id="ack-all-button"
                   ${
@@ -3066,6 +3351,7 @@ class AlarmManagerPanel extends HTMLElement {
 
         ${this._renderBuilder()}
         ${this._renderTargetEditor()}
+        ${this._renderAlarmManagementView()}
 
       </div>
     `;
