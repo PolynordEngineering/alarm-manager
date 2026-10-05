@@ -502,9 +502,9 @@ class AlarmManager:
     async def async_clear_alarm(self, alarm_id: str) -> bool:
         """Clear a latched inactive alarm without acknowledging it.
 
-        The completed history occurrence is marked CLEARED, without adding
-        an acknowledgement. This represents an operator clearing a condition
-        that had already returned to normal without acknowledging the alarm.
+        The completed history occurrence deliberately remains NOT ACKED.
+        This represents an operator clearing a condition that had already
+        returned to normal without having acknowledged the alarm.
         """
         alarm = self._alarms.get(alarm_id)
 
@@ -514,20 +514,11 @@ class AlarmManager:
         if alarm.state != STATE_INACTIVE:
             return False
 
-        # The occurrence was already written to history when the condition
-        # returned to normal. Mark that occurrence as explicitly CLEARED
-        # by the operator, without adding an acknowledgement.
-        self._update_history_completion_status(
-            alarm_id,
-            "CLEARED",
-        )
-
         alarm.reset()
 
         await self.async_save()
 
         self._notify_alarm_updated(alarm_id)
-        self._notify_history_updated()
 
         return True
 
@@ -594,10 +585,6 @@ class AlarmManager:
                 acknowledged_by,
                 acknowledged_by_user_id,
             )
-            self._update_history_completion_status(
-                alarm_id,
-                "ACKNOWLEDGED",
-            )
 
             alarm.reset()
 
@@ -658,10 +645,6 @@ class AlarmManager:
                     acknowledgement_time,
                     acknowledged_by,
                     acknowledged_by_user_id,
-                )
-                self._update_history_completion_status(
-                    alarm.alarm_id,
-                    "ACKNOWLEDGED",
                 )
 
                 alarm.reset()
@@ -1098,14 +1081,6 @@ class AlarmManager:
             "duration": alarm.duration,
         }
 
-        record[
-            "completion_status"
-        ] = (
-            "ACKNOWLEDGED"
-            if alarm.acknowledged_at
-            else "UNACKNOWLEDGED"
-        )
-
         self._history.append(
             record
         )
@@ -1117,18 +1092,6 @@ class AlarmManager:
         )
 
         self._notify_history_updated()
-
-    def _update_history_completion_status(
-        self,
-        alarm_id: str,
-        status: str,
-    ) -> None:
-        """Update the most recent occurrence completion status."""
-
-        for record in reversed(self._history):
-            if record.get("alarm_id") == alarm_id:
-                record["completion_status"] = status
-                break
 
     def _update_history_acknowledgement(
         self,

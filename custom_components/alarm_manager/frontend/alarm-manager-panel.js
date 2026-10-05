@@ -667,13 +667,10 @@ class AlarmManagerPanel extends HTMLElement {
   }
 
   _defaultPrimaryCondition() {
-    // Default to a numeric comparison so temperature, pressure, energy,
-    // and other sensor alarms immediately expose the threshold field.
-    // Binary sensors can still be configured by selecting ON/OFF below.
     return {
       type: "entity",
       entity_id: "",
-      condition: "above",
+      condition: "on",
       threshold: 0,
       delay: 0,
       hysteresis: 0,
@@ -1438,7 +1435,7 @@ class AlarmManagerPanel extends HTMLElement {
           ? `<div class="no-history">${totalCount === 0 ? "No completed alarm occurrences." : "No history matches this severity."}</div>`
           : `<div class="history-table">
               <div class="history-header">
-                <div></div><div>ALARM</div><div>TRIGGER</div><div>DURATION</div><div>ACTIVATED</div><div>CLEARED</div><div>STATUS</div>
+                <div></div><div>ALARM</div><div>TRIGGER</div><div>DURATION</div><div>ACTIVATED</div><div>CLEARED</div><div>ACKNOWLEDGEMENT</div>
               </div>
               ${filteredHistory.map((record) => this._renderHistoryRow(record)).join("")}
             </div>`}
@@ -1463,10 +1460,6 @@ class AlarmManagerPanel extends HTMLElement {
       Boolean(
         record.acknowledged_at
       );
-    const completionStatus = String(
-      record.completion_status || (acknowledged ? "ACKNOWLEDGED" : "UNACKNOWLEDGED")
-    ).toUpperCase();
-    const clearedByOperator = completionStatus === "CLEARED";
 
     return `
       <div class="history-row">
@@ -1530,37 +1523,39 @@ class AlarmManagerPanel extends HTMLElement {
         <div class="history-ack">
 
           ${
-            clearedByOperator
+            acknowledged
               ? `
-                  <span class="history-ack-ok">
-                    ✓ CLEARED
+                  <span class="
+                    history-ack-ok
+                  ">
+                    ✓ ACK
+                  </span>
+
+                  <div class="
+                    history-ack-time
+                  ">
+                    ${this._formatDateTime(
+                      record.acknowledged_at
+                    )}
+                  </div>
+
+                  <div class="
+                    history-ack-user
+                  ">
+                    By:
+                    ${
+                      record.acknowledged_by ||
+                      "—"
+                    }
+                  </div>
+                `
+              : `
+                  <span class="
+                    history-ack-none
+                  ">
+                    NOT ACKED
                   </span>
                 `
-              : acknowledged
-                ? `
-                    <span class="history-ack-ok">
-                      ✓ ACK
-                    </span>
-
-                    <div class="history-ack-time">
-                      ${this._formatDateTime(
-                        record.acknowledged_at
-                      )}
-                    </div>
-
-                    <div class="history-ack-user">
-                      By:
-                      ${
-                        record.acknowledged_by ||
-                        "—"
-                      }
-                    </div>
-                  `
-                : `
-                    <span class="history-ack-none">
-                      NOT ACKED
-                    </span>
-                  `
           }
 
         </div>
