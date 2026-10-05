@@ -50,13 +50,40 @@ SEVERITIES = {
 }
 
 
+def _normalize_condition(value: str) -> str:
+    """Normalize UI/user condition labels to the internal condition keys."""
+    text = str(value).strip().lower()
+    aliases = {
+        "is on": CONDITION_ON,
+        "on": CONDITION_ON,
+        "is off": CONDITION_OFF,
+        "off": CONDITION_OFF,
+        "is above": CONDITION_ABOVE,
+        "above": CONDITION_ABOVE,
+        "is below": CONDITION_BELOW,
+        "below": CONDITION_BELOW,
+        "equals": CONDITION_EQUAL,
+        "equal": CONDITION_EQUAL,
+        "is equal to": CONDITION_EQUAL,
+        "is not equal to": CONDITION_NOT_EQUAL,
+        "not equal": CONDITION_NOT_EQUAL,
+        "not_equal": CONDITION_NOT_EQUAL,
+        "is unavailable": CONDITION_UNAVAILABLE,
+        "unavailable": CONDITION_UNAVAILABLE,
+    }
+    normalized = aliases.get(text, text)
+    if normalized not in CONDITIONS:
+        raise vol.Invalid(f"Unknown alarm condition: {value}")
+    return normalized
+
+
 ENTITY_CONDITION_SCHEMA = vol.Schema(
     {
         vol.Required("type", default=CONDITION_TYPE_ENTITY): vol.In(
             {CONDITION_TYPE_ENTITY}
         ),
         vol.Required("entity_id"): cv.entity_id,
-        vol.Required("condition"): vol.In(CONDITIONS),
+        vol.Required("condition"): vol.All(cv.string, _normalize_condition),
         vol.Optional("threshold"): vol.Any(
             cv.string,
             vol.Coerce(float),
@@ -95,7 +122,7 @@ CREATE_ALARM_SCHEMA = vol.Schema(
         vol.Required("name"): cv.string,
         # Legacy single-condition fields remain supported for automations/services.
         vol.Optional("entity_id", default=""): cv.string,
-        vol.Optional("condition", default="above"): vol.In(CONDITIONS),
+        vol.Optional("condition", default="above"): vol.All(cv.string, _normalize_condition),
         vol.Optional("threshold"): vol.Any(
             cv.string,
             vol.Coerce(float),
@@ -130,7 +157,7 @@ UPDATE_ALARM_SCHEMA = vol.Schema(
         vol.Required("alarm_id"): cv.string,
         vol.Required("name"): cv.string,
         vol.Optional("entity_id", default=""): cv.string,
-        vol.Optional("condition", default="above"): vol.In(CONDITIONS),
+        vol.Optional("condition", default="above"): vol.All(cv.string, _normalize_condition),
         vol.Optional("threshold"): vol.Any(
             cv.string,
             vol.Coerce(float),
