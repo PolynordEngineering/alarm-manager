@@ -667,10 +667,13 @@ class AlarmManagerPanel extends HTMLElement {
   }
 
   _defaultPrimaryCondition() {
+    // Default to a numeric comparison so temperature, pressure, energy,
+    // and other sensor alarms immediately expose the threshold field.
+    // Binary sensors can still be configured by selecting ON/OFF below.
     return {
       type: "entity",
       entity_id: "",
-      condition: "on",
+      condition: "above",
       threshold: 0,
       delay: 0,
       hysteresis: 0,
@@ -1150,7 +1153,7 @@ class AlarmManagerPanel extends HTMLElement {
       <section class="section notification-section">
         <div class="section-header">
           <div><div class="section-title">NOTIFICATION TARGETS</div><div class="notification-subtitle">People and devices that receive Alarm Manager notifications.</div></div>
-          <div class="section-actions"><button class="toolbar-button primary add-target-button" id="add-target-button" style="display:inline-flex;align-items:center;justify-content:center;visibility:visible;opacity:1;">+ ADD TARGET</button></div>
+          <div class="section-actions notification-section-actions"><div class="target-action-buttons"><button type="button" class="toolbar-button primary add-target-button" id="add-target-button">+ ADD TARGET</button></div></div>
         </div>
         <div class="notification-grid">
           ${targets.length ? targets.map((target,index) => {
@@ -1435,7 +1438,7 @@ class AlarmManagerPanel extends HTMLElement {
           ? `<div class="no-history">${totalCount === 0 ? "No completed alarm occurrences." : "No history matches this severity."}</div>`
           : `<div class="history-table">
               <div class="history-header">
-                <div></div><div>ALARM</div><div>TRIGGER</div><div>DURATION</div><div>ACTIVATED</div><div>CLEARED</div><div>ACKNOWLEDGEMENT</div>
+                <div></div><div>ALARM</div><div>TRIGGER</div><div>DURATION</div><div>ACTIVATED</div><div>CLEARED</div><div>STATUS</div>
               </div>
               ${filteredHistory.map((record) => this._renderHistoryRow(record)).join("")}
             </div>`}
@@ -1460,6 +1463,10 @@ class AlarmManagerPanel extends HTMLElement {
       Boolean(
         record.acknowledged_at
       );
+    const completionStatus = String(
+      record.completion_status || (acknowledged ? "ACKNOWLEDGED" : "UNACKNOWLEDGED")
+    ).toUpperCase();
+    const clearedByOperator = completionStatus === "CLEARED";
 
     return `
       <div class="history-row">
@@ -1523,39 +1530,37 @@ class AlarmManagerPanel extends HTMLElement {
         <div class="history-ack">
 
           ${
-            acknowledged
+            clearedByOperator
               ? `
-                  <span class="
-                    history-ack-ok
-                  ">
-                    ✓ ACK
-                  </span>
-
-                  <div class="
-                    history-ack-time
-                  ">
-                    ${this._formatDateTime(
-                      record.acknowledged_at
-                    )}
-                  </div>
-
-                  <div class="
-                    history-ack-user
-                  ">
-                    By:
-                    ${
-                      record.acknowledged_by ||
-                      "—"
-                    }
-                  </div>
-                `
-              : `
-                  <span class="
-                    history-ack-none
-                  ">
-                    NOT ACKED
+                  <span class="history-ack-ok">
+                    ✓ CLEARED
                   </span>
                 `
+              : acknowledged
+                ? `
+                    <span class="history-ack-ok">
+                      ✓ ACK
+                    </span>
+
+                    <div class="history-ack-time">
+                      ${this._formatDateTime(
+                        record.acknowledged_at
+                      )}
+                    </div>
+
+                    <div class="history-ack-user">
+                      By:
+                      ${
+                        record.acknowledged_by ||
+                        "—"
+                      }
+                    </div>
+                  `
+                : `
+                    <span class="history-ack-none">
+                      NOT ACKED
+                    </span>
+                  `
           }
 
         </div>
@@ -1867,7 +1872,7 @@ class AlarmManagerPanel extends HTMLElement {
         }
 
         .section-actions {
-          display: flex;
+          display: flex !important;
           align-items: center;
           gap: 8px;
         }
@@ -1923,6 +1928,16 @@ class AlarmManagerPanel extends HTMLElement {
             );
 
           color: white;
+        }
+
+        .alarm-action-buttons,
+        .target-action-buttons {
+          display: flex !important;
+          align-items: center;
+          gap: 8px;
+          flex: 0 0 auto;
+          visibility: visible !important;
+          opacity: 1 !important;
         }
 
         .add-alarm-button,
@@ -2840,7 +2855,7 @@ class AlarmManagerPanel extends HTMLElement {
                 CURRENT ALARMS
               </div>
 
-              <div class="section-actions">
+              <div class="section-actions alarm-section-actions">
 
                 <div class="section-count">
                   ${currentAlarms.length}
@@ -2851,26 +2866,19 @@ class AlarmManagerPanel extends HTMLElement {
                   inactive
                 </div>
 
-                <button
-                  class="toolbar-button primary add-alarm-button"
-                  id="add-alarm-button"
-                  style="display:inline-flex;align-items:center;justify-content:center;visibility:visible;opacity:1;"
-                >
-                  + ADD ALARM
-                </button>
-
-                <button
-                  class="toolbar-button primary"
-                  id="ack-all-button"
+                <div class="alarm-action-buttons">
+                  <button type="button" class="toolbar-button primary add-alarm-button" id="add-alarm-button">+ ADD ALARM</button>
+                  <button type="button" class="toolbar-button primary" id="ack-all-button"
                   ${
                     unacknowledged.length ===
                     0
                       ? "disabled"
                       : ""
                   }
-                >
-                  ACK ALL
-                </button>
+                  >
+                    ACK ALL
+                  </button>
+                </div>
 
               </div>
 
