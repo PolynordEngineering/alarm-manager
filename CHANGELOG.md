@@ -7,7 +7,6 @@ All notable changes to Alarm Manager are documented here.
 ### Added
 
 - Added a dedicated **CLEAR** action for inactive, unacknowledged alarms.
-- Added explicit history completion status so completed occurrences can be shown as **ACK** or **CLEARED**.
 
 ### Changed
 
@@ -17,15 +16,12 @@ All notable changes to Alarm Manager are documented here.
 - Updated documentation to clearly distinguish **ACK** from **CLEAR**:
   - **ACK** records operator acknowledgement.
   - **CLEAR** removes an inactive alarm without changing the occurrence's acknowledgement status.
-  - An occurrence cleared without acknowledgement is shown as **CLEARED** in Alarm History.
-- Changed the default primary condition in **Add Alarm** from **is ON** to **is above**, so numeric sensors such as temperature sensors immediately show the **VALUE / THRESHOLD** field. Binary sensors can still be configured with ON/OFF.
+  - An occurrence cleared without acknowledgement remains **NOT ACKED** in Alarm History.
 
 ### Fixed
 
 - Prevented inactive, unacknowledged alarms from being presented with an **ACK** action that could imply the occurrence had been acknowledged.
 - Removed the duplicate Notifications entry from the Home Assistant sidebar.
-- Fixed Alarm History not refreshing after an operator used CLEAR.
-- Fixed cleared occurrences being indistinguishable from unacknowledged occurrences in the History status column.
 
 ### Notes
 

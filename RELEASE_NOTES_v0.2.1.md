@@ -6,12 +6,11 @@ Alarm Manager v0.2.1 is a focused UI and usability update built on the v0.2.0 al
 
 - Inactive, unacknowledged alarms now show **CLEAR** instead of **ACK**.
 - CLEAR removes the inactive alarm from Current Alarms without recording an acknowledgement.
-- Alarm History now distinguishes **ACK**, **CLEARED**, and **NOT ACKED** occurrences.
+- Alarm History correctly remains **NOT ACKED** when an occurrence was never acknowledged.
 - Removed the separate **Notifications** sidebar item.
 - Notification targets and severity routing remain available inside Alarm Manager.
 - Updated README screenshots to reflect the current UI.
 - Bumped the frontend cache version.
-- New alarms now default the primary numeric condition to **is above**, immediately exposing the **VALUE / THRESHOLD** field for temperature and other numeric sensors.
 
 ## Upgrade notes
 
@@ -23,7 +22,5 @@ After updating, restart Home Assistant. If the old Notifications sidebar item re
 
 - **ACTIVE → ACK** records that an operator has acknowledged the alarm.
 - **ACTIVE → normal** creates an inactive/latching occurrence.
-- **INACTIVE → CLEAR** removes the current alarm without adding an acknowledgement.
-- The completed occurrence is marked **CLEARED** in Alarm History.
-- **INACTIVE → ACK** records the operator acknowledgement and shows **ACK** in History.
-- A condition that has returned to normal but has not yet been cleared or acknowledged remains **NOT ACKED**.
+- **INACTIVE → CLEAR** removes the current alarm without changing the occurrence's acknowledgement status.
+- History therefore distinguishes between alarms that were acknowledged and alarms that were cleared without acknowledgement.
