@@ -1150,7 +1150,7 @@ class AlarmManagerPanel extends HTMLElement {
       <section class="section notification-section">
         <div class="section-header">
           <div><div class="section-title">NOTIFICATION TARGETS</div><div class="notification-subtitle">People and devices that receive Alarm Manager notifications.</div></div>
-          <div class="section-actions"><button class="toolbar-button primary" id="add-target-button">+ ADD TARGET</button></div>
+          <div class="section-actions"><button class="toolbar-button primary add-target-button" id="add-target-button" style="display:inline-flex;align-items:center;justify-content:center;visibility:visible;opacity:1;">+ ADD TARGET</button></div>
         </div>
         <div class="notification-grid">
           ${targets.length ? targets.map((target,index) => {
@@ -1923,6 +1923,17 @@ class AlarmManagerPanel extends HTMLElement {
             );
 
           color: white;
+        }
+
+        .add-alarm-button,
+        .add-target-button {
+          display: inline-flex !important;
+          align-items: center;
+          justify-content: center;
+          visibility: visible !important;
+          opacity: 1 !important;
+          flex: 0 0 auto;
+          white-space: nowrap;
         }
 
         .toolbar-button.danger {
@@ -2841,8 +2852,9 @@ class AlarmManagerPanel extends HTMLElement {
                 </div>
 
                 <button
-                  class="toolbar-button primary"
+                  class="toolbar-button primary add-alarm-button"
                   id="add-alarm-button"
+                  style="display:inline-flex;align-items:center;justify-content:center;visibility:visible;opacity:1;"
                 >
                   + ADD ALARM
                 </button>
